@@ -22,9 +22,10 @@ fn main() {
     // remove job_test
     cron.remove(job_test_id);
 
-    loop {
-        std::thread::sleep(std::time::Duration::from_secs(2));
-    }
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    // stop cron
+    cron.stop();
 }
 
 fn test() {

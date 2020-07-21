@@ -3,6 +3,7 @@ name = "cron_tab"
 version = "0.1.0"
 authors = ["Tran Tuyen <vat1906@gmail.com>"]
 edition = "2018"
+description = "A cron job library for Rust."
 
 license = "MIT"
 documentation = "https://docs.rs/cron_tab"

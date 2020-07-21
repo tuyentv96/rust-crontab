@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["Tran Tuyen <vat1906@gmail.com>"]
 edition = "2018"
 
+license = "MIT"
+documentation = "https://docs.rs/cron_tab"
+repository = "https://github.com/tuyentv96/rust-crontab"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]

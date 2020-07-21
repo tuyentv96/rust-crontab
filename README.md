@@ -31,26 +31,32 @@ use chrono::{FixedOffset, Local, TimeZone, Utc};
 fn main() {  
  let local_tz = Local::from_offset(&FixedOffset::east(7));  
  let utc_tz = Utc;  
-  
+ 
+ // create new cron with timezone
  let mut cron = cron_tab::Cron::new(utc_tz);  
   
+ // add test fn to cron
  let job_test_id = cron.add_fn("* * * * * * *", test).unwrap();  
   
-  cron.start();  
-  
-  std::thread::sleep(std::time::Duration::from_secs(2));  
- let anonymous_job_id = cron  
-        .add_fn("* * * * * *", || {  
+ // start cron
+ cron.start();  
+
+ // sleep 2 second
+ std::thread::sleep(std::time::Duration::from_secs(2));
+ 
+ // add one more function
+ let anonymous_job_id = cron.add_fn("* * * * * *", || {  
             println!("anonymous fn");  
-  })  
-        .unwrap();  
+ }).unwrap();  
   
-  // remove job_test  
-  cron.remove(job_test_id);  
+ // remove job_test  
+ cron.remove(job_test_id);  
   
-  std::thread::sleep(std::time::Duration::from_secs(2));  
-  // stop cron  
-  cron.stop();  
+ // sleep 2 second
+ std::thread::sleep(std::time::Duration::from_secs(2));
+  
+ // stop cron  
+ cron.stop();  
 }  
   
 fn test() {  

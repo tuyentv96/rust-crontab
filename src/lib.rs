@@ -8,7 +8,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! cron_tab = "0.1.0"
+//! cron_tab = "0.1"
 //! ```
 //!
 //! Creating a schedule for a job is done using the `FromStr` impl for the

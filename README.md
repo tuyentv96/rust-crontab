@@ -12,7 +12,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cron_tab = "0.1.1"
+cron_tab = "0.1"
 ```
 
 The cron expression format:

@@ -35,6 +35,13 @@ jobs:
         with:
           command: build
 
+      - name: Install cargo-tarpaulin
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-tarpaulin
+          version: latest
+          use-tool-cache: true
+
       - name: Run tests
         uses: actions-rs/cargo@v1
         with:

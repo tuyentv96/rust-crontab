@@ -1,33 +1,29 @@
-extern crate cron_tab;
-
-use chrono::{FixedOffset, Local, TimeZone, Utc};
+use chrono::{FixedOffset, Local, TimeZone};
+use cron_tab;
 
 fn main() {
     let local_tz = Local::from_offset(&FixedOffset::east(7));
-    let utc_tz = Utc;
+    let mut cron = cron_tab::Cron::new(local_tz);
 
-    let mut cron = cron_tab::Cron::new(utc_tz);
+    let first_job_id = cron.add_fn("* * * * * * *", print_now).unwrap();
 
-    let job_test_id = cron.add_fn("* * * * * * *", test).unwrap();
-
+    // start cron in background
     cron.start();
 
-    std::thread::sleep(std::time::Duration::from_secs(2));
-    let anonymous_job_id = cron
-        .add_fn("* * * * * *", || {
-            println!("anonymous fn");
-        })
-        .unwrap();
+    cron.add_fn("* * * * * *", move || {
+        println!("add_fn {}", Local::now().to_string());
+    })
+    .unwrap();
 
     // remove job_test
-    cron.remove(job_test_id);
+    cron.remove(first_job_id);
 
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    std::thread::sleep(std::time::Duration::from_secs(10));
 
     // stop cron
     cron.stop();
 }
 
-fn test() {
+fn print_now() {
     println!("now: {}", Local::now().to_string());
 }

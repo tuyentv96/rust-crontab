@@ -8,7 +8,7 @@
 //!
 //! ```toml
 //! [dependencies]
-//! cron_tab = "0.1"
+//! cron_tab = {version = "0.2", features = ["sync", "async"]}
 //! ```
 //!
 //! Creating a schedule for a job is done using the `FromStr` impl for the
@@ -95,13 +95,25 @@
 //! }
 //! ```
 
-mod async_cron;
-mod async_entry;
-mod cron;
-mod entry;
 mod error;
 
-pub use crate::{async_cron::AsyncCron, cron::Cron, error::CronError};
+#[cfg(feature = "async")]
+mod async_cron;
+#[cfg(feature = "async")]
+mod async_entry;
+
+#[cfg(feature = "sync")]
+mod cron;
+#[cfg(feature = "sync")]
+mod entry;
+
+#[cfg(feature = "async")]
+pub use crate::async_cron::AsyncCron;
+
+#[cfg(feature = "sync")]
+pub use crate::cron::Cron;
+
+pub use crate::error::CronError;
 
 pub type Result<T> = std::result::Result<T, CronError>;
 

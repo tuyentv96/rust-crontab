@@ -1,6 +1,6 @@
 
 # CronTab
-[![](https://docs.rs/cron_tab/badge.svg)](https://docs.rs/cron_tab) [![](https://img.shields.io/crates/v/cron_tab.svg)](https://crates.io/crates/cron_tab) 
+[![Build](https://github.com/tuyentv96/rust-crontab/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/tuyentv96/rust-crontab/actions/workflows/build.yml) [![](https://docs.rs/cron_tab/badge.svg)](https://docs.rs/cron_tab) [![](https://img.shields.io/crates/v/cron_tab.svg)](https://crates.io/crates/cron_tab) 
 
 A cron job library for Rust.
 
@@ -12,7 +12,7 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cron_tab = "0.2"
+cron_tab = {version = "0.2", features = ["sync", "async"]}
 ```
 
 The cron expression format:

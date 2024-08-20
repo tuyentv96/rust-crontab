@@ -22,9 +22,9 @@ where
     next_id: Arc<AtomicUsize>,
     running: Arc<AtomicBool>,
     tz: Z,
-    add_tx: Option<mpsc::UnboundedSender<AsyncEntry<Z>>>,
-    remove_tx: Option<mpsc::UnboundedSender<usize>>,
-    stop_tx: Option<mpsc::UnboundedSender<bool>>,
+    add_tx: Arc<Mutex<Option<mpsc::UnboundedSender<AsyncEntry<Z>>>>>,
+    remove_tx: Arc<Mutex<Option<mpsc::UnboundedSender<usize>>>>,
+    stop_tx: Arc<Mutex<Option<mpsc::UnboundedSender<bool>>>>,
 }
 
 /// Cron contains and executes the scheduled jobs.
@@ -54,9 +54,9 @@ where
             next_id: Arc::new(AtomicUsize::new(0)),
             running: Arc::new(AtomicBool::new(false)),
             tz,
-            add_tx: None,
-            remove_tx: None,
-            stop_tx: None,
+            add_tx: Default::default(),
+            remove_tx: Default::default(),
+            stop_tx: Default::default(),
         }
     }
 
@@ -68,7 +68,10 @@ where
     /// Remove a job from Cron.
     pub async fn remove(&self, id: usize) {
         if self.running.load(Ordering::SeqCst) {
-            self.remove_tx.as_ref().unwrap().send(id).unwrap();
+            let guard = self.remove_tx.lock().await;
+            if let Some(tx) = guard.as_ref() {
+                let _ = tx.send(id);
+            }
             return;
         }
 
@@ -88,9 +91,11 @@ where
         let (remove_tx, mut remove_rx) = mpsc::unbounded_channel();
         let (stop_tx, mut stop_rx) = mpsc::unbounded_channel();
 
-        self.add_tx = Some(add_tx);
-        self.remove_tx = Some(remove_tx);
-        self.stop_tx = Some(stop_tx);
+        {
+            *self.add_tx.lock().await = Some(add_tx);
+            *self.remove_tx.lock().await = Some(remove_tx);
+            *self.stop_tx.lock().await = Some(stop_tx);
+        }
 
         self.running.store(true, Ordering::SeqCst);
 
@@ -167,7 +172,7 @@ where
 
         entry.next = entry.get_next(self.get_timezone());
 
-        match self.add_tx.as_ref() {
+        match self.add_tx.lock().await.as_ref() {
             Some(tx) if self.running.load(Ordering::SeqCst) => tx.send(entry).unwrap(),
             _ => self.entries.lock().await.push(entry),
         }
@@ -190,10 +195,10 @@ where
     }
 
     /// Stop Cron.
-    pub fn stop(&self) {
+    pub async fn stop(&self) {
         self.running.store(false, Ordering::SeqCst);
-        if let Some(tx) = self.stop_tx.as_ref() {
-            tx.send(true).unwrap()
+        if let Some(tx) = self.stop_tx.lock().await.as_ref() {
+            let _ = tx.send(true);
         }
     }
 }

@@ -36,8 +36,29 @@ jobs:
           command: build
           args: --all-features
 
+      - name: Install cargo-tarpaulin
+        uses: actions-rs/install@v0.1
+        with:
+          crate: cargo-tarpaulin
+          version: latest
+          use-tool-cache: true
+
       - name: Run tests
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all --all-features
+          args: --all --features all
+
+      - name: Coverage Report with tarpaulin
+        uses: actions-rs/cargo@v1
+        with:
+          command: tarpaulin
+          args: --all --verbose --all-features --out Lcov -- --test-threads 1
+
+      - name: Upload to CodeCov
+        uses: codecov/codecov-action@v4
+        with:
+          # required for private repositories:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./lcov.info
+          fail_ci_if_error: true

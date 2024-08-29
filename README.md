@@ -4,6 +4,10 @@
 
 A cron job library for Rust.
 
+# Features
+- **Sync and Async Support:** Manage cron jobs in both synchronous and asynchronous contexts.
+- **Flexible Cron Expressions:** Use standard cron expressions for job scheduling.
+
 ## Usage
 
 Please see the [Documentation](https://docs.rs/cron_tab/) for more details.

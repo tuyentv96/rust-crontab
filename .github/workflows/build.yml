@@ -1,10 +1,10 @@
-name: Build & Test
+name: Test
 
 on: [push, pull_request]
 
 jobs:
-  build:
-    name: Build & Test
+  coveralls_io:
+    name: Test Coverage
     runs-on: ubuntu-latest
 
     steps:
@@ -30,14 +30,29 @@ jobs:
           override: true
           default: true
 
-      - name: Run build
-        uses: actions-rs/cargo@v1
+      - name: Install cargo-tarpaulin
+        uses: actions-rs/install@v0.1
         with:
-          command: build
-          args: --all-features
+          crate: cargo-tarpaulin
+          version: latest
+          use-tool-cache: true
 
       - name: Run tests
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all --all-features
+          args: --all
+
+      - name: Coverage Report with tarpaulin
+        uses: actions-rs/cargo@v1
+        with:
+          command: tarpaulin
+          args: --all --verbose --all-features --out Lcov -- --test-threads 1
+
+      - name: Upload to CodeCov
+        uses: codecov/codecov-action@v4
+        with:
+          # required for private repositories:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./lcov.info
+          fail_ci_if_error: true

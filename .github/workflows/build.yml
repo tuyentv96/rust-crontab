@@ -1,10 +1,10 @@
-name: Test
+name: Build & Test
 
 on: [push, pull_request]
 
 jobs:
-  coveralls_io:
-    name: Test Coverage
+  build:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
@@ -29,6 +29,12 @@ jobs:
           toolchain: stable
           override: true
           default: true
+
+      - name: Run build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --all-features
 
       - name: Install cargo-tarpaulin
         uses: actions-rs/install@v0.1

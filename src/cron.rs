@@ -19,13 +19,10 @@ where
 {
     entries: Arc<Mutex<Vec<Entry<Z>>>>,
     next_id: Arc<AtomicUsize>,
-    running: Arc<AtomicBool>,
     tz: Z,
     add_tx: crossbeam_channel::Sender<Entry<Z>>,
-    remove_tx: crossbeam_channel::Sender<usize>,
     stop_tx: crossbeam_channel::Sender<bool>,
     add_rx: crossbeam_channel::Receiver<Entry<Z>>,
-    remove_rx: crossbeam_channel::Receiver<usize>,
     stop_rx: crossbeam_channel::Receiver<bool>,
 }
 
@@ -46,19 +43,15 @@ where
     /// ```
     pub fn new(tz: Z) -> Cron<Z> {
         let (add_tx, add_rx) = crossbeam_channel::unbounded();
-        let (remove_tx, remove_rx) = crossbeam_channel::unbounded();
         let (stop_tx, stop_rx) = crossbeam_channel::unbounded();
 
         Cron {
             entries: Arc::new(Mutex::new(Vec::new())),
             next_id: Arc::new(AtomicUsize::new(0)),
-            running: Arc::new(AtomicBool::new(false)),
             tz,
             add_tx,
-            remove_tx,
             stop_tx,
             add_rx,
-            remove_rx,
             stop_rx,
         }
     }
@@ -96,12 +89,7 @@ where
         };
 
         entry.next = entry.schedule_next(self.get_timezone());
-
-        if self.running.load(Ordering::SeqCst) {
-            self.add_tx.send(entry).unwrap();
-        } else {
-            self.entries.lock().unwrap().push(entry);
-        }
+        self.add_tx.send(entry).unwrap();
 
         Ok(next_id)
     }
@@ -143,11 +131,7 @@ where
     /// cron.remove(job_id);  
     /// ```
     pub fn remove(&self, id: usize) {
-        if self.running.load(Ordering::SeqCst) {
-            self.remove_tx.send(id).unwrap();
-        }
-
-        self.remove_entry(id);
+        self.remove_entry(id)
     }
 
     /// Stop Cron.
@@ -175,31 +159,15 @@ where
     /// cron.start();
     /// ```
     pub fn start(&mut self) {
-        let mut cloned_cron = self.clone();
+        let mut cron = self.clone();
 
-        // let (add_tx, add_rx) = crossbeam_channel::unbounded();
-        // let (remove_tx, remove_rx) = crossbeam_channel::unbounded();
-        // let (stop_tx, stop_rx) = crossbeam_channel::unbounded();
-
-        // self.add_tx = Some(add_tx);
-        // self.remove_tx = Some(remove_tx);
-        // self.stop_tx = Some(stop_tx);
-        // self.add_rx = Some(add_rx);
-        // self.remove_rx = Some(remove_rx);
-        // self.stop_rx = Some(stop_rx);
-
-        self.running.store(true, Ordering::SeqCst);
         thread::spawn(move || {
-            cloned_cron.start_blocking();
+            cron.start_blocking();
         });
     }
 
     /// Run a loop for schedule jobs
     pub fn start_blocking(&mut self) {
-        // let add_rx = self.add_rx.clone();
-        // let remove_rx = self.remove_rx.clone();
-        // let stop_rx = self.stop_rx.clone();
-
         for entry in self.entries.lock().unwrap().iter_mut() {
             entry.next = entry.schedule_next(self.get_timezone());
         }
@@ -245,11 +213,6 @@ where
                     entry.next = entry.schedule_next(self.get_timezone());
                     self.entries.lock().unwrap().push(entry);
                 },
-                // wait remove entry
-                recv(self.remove_rx) -> id => {
-                    self.remove_entry(id.unwrap());
-                },
-                // wait stop cron
                 recv(self.stop_rx) -> _ => {
                     return;
                 },

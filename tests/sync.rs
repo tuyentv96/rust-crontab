@@ -19,6 +19,27 @@ mod tests {
     }
 
     #[test]
+    fn add_job_before_start() {
+        let local_tz = Local::from_offset(&FixedOffset::east_opt(7).unwrap());
+        let mut cron = Cron::new(local_tz);
+
+        let counter = Arc::new(Mutex::new(0));
+        let counter1 = Arc::clone(&counter);
+
+        cron.add_fn("* * * * * *", move || {
+            let mut value = counter1.lock().unwrap();
+            *value += 1;
+        })
+        .unwrap();
+
+        cron.start();
+
+        sleep(Duration::from_millis(2001));
+        let value = *counter.lock().unwrap();
+        assert_eq!(value, 2)
+    }
+
+    #[test]
     fn add_job() {
         let local_tz = Local::from_offset(&FixedOffset::east_opt(7).unwrap());
         let mut cron = Cron::new(local_tz);

@@ -2,7 +2,7 @@ use chrono::{FixedOffset, Local, TimeZone};
 use cron_tab;
 
 fn main() {
-    let local_tz = Local::from_offset(&FixedOffset::east(7));
+    let local_tz = Local::from_offset(&FixedOffset::east_opt(7).unwrap());
     let mut cron = cron_tab::Cron::new(local_tz);
 
     let first_job_id = cron.add_fn("* * * * * * *", print_now).unwrap();

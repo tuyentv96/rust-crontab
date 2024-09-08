@@ -1,6 +1,6 @@
 
 # CronTab
-[![Build](https://github.com/tuyentv96/rust-crontab/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/tuyentv96/rust-crontab/actions/workflows/build.yml) [![](https://docs.rs/cron_tab/badge.svg)](https://docs.rs/cron_tab) [![](https://img.shields.io/crates/v/cron_tab.svg)](https://crates.io/crates/cron_tab) 
+[![Build](https://github.com/tuyentv96/rust-crontab/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/tuyentv96/rust-crontab/actions/workflows/build.yml) [![](https://docs.rs/cron_tab/badge.svg)](https://docs.rs/cron_tab) [![](https://img.shields.io/crates/v/cron_tab.svg)](https://crates.io/crates/cron_tab) [![codecov](https://codecov.io/gh/tuyentv96/rust-crontab/branch/master/graph/badge.svg?token=YF89MDH26R)](https://codecov.io/gh/tuyentv96/rust-crontab)
 
 A cron job library for Rust.
 

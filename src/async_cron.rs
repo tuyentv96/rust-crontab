@@ -12,22 +12,38 @@ use tokio::time as tokio_time;
 use crate::async_entry::{AsyncEntry, TaskWrapper};
 use crate::{Result, MAX_WAIT_SECONDS};
 
+/// The `AsyncCron` struct manages scheduled jobs that run asynchronously.
+/// It holds the job entries, keeps track of job IDs, and manages the state
+/// of the running cron.
 #[derive(Clone)]
 pub struct AsyncCron<Z>
 where
     Z: TimeZone + Send + Sync + 'static,
     Z::Offset: Send,
 {
+    /// A thread-safe, asynchronous list of job entries (schedules and tasks).
     entries: Arc<Mutex<Vec<AsyncEntry<Z>>>>,
+
+    /// A counter for assigning unique IDs to job entries.
     next_id: Arc<AtomicUsize>,
+
+    /// Indicates whether the cron is currently running.
     running: Arc<AtomicBool>,
+
+    /// The timezone used for scheduling tasks.
     tz: Z,
+
+    /// A channel sender for adding new entries to the cron scheduler.
     add_tx: Arc<Mutex<Option<mpsc::UnboundedSender<AsyncEntry<Z>>>>>,
+
+    /// A channel sender for removing entries from the cron scheduler.
     remove_tx: Arc<Mutex<Option<mpsc::UnboundedSender<usize>>>>,
+
+    /// A channel sender for stopping the cron scheduler.
     stop_tx: Arc<Mutex<Option<mpsc::UnboundedSender<bool>>>>,
 }
 
-/// Cron contains and executes the scheduled jobs.
+/// Implementation of the `AsyncCron` struct, which provides methods for managing scheduled tasks.
 impl<Z> AsyncCron<Z>
 where
     Z: TimeZone + Send + Sync + 'static,
@@ -85,8 +101,11 @@ where
         }
     }
 
-    /// Run a blocking loop for schedule jobs
+    /// Starts the cron scheduler in a blocking loop, processing scheduled jobs.
+    /// The loop will sleep until the next scheduled job is ready to run, and it
+    /// will handle adding, removing, and stopping jobs.
     pub async fn start_blocking(&mut self) {
+        // Channels for communicating with the cron loop (adding/removing/stopping jobs).
         let (add_tx, mut add_rx) = mpsc::unbounded_channel();
         let (remove_tx, mut remove_rx) = mpsc::unbounded_channel();
         let (stop_tx, mut stop_rx) = mpsc::unbounded_channel();
@@ -97,19 +116,20 @@ where
             *self.stop_tx.lock().await = Some(stop_tx);
         }
 
-        self.running.store(true, Ordering::SeqCst);
-
+        // Initialize the next scheduled time for all entries.
         for entry in self.entries.lock().await.iter_mut() {
             entry.next = entry.get_next(self.get_timezone());
         }
 
-        // default long timer duration
+        // Set a default long wait duration for sleeping.
         let mut wait_duration = Duration::from_secs(MAX_WAIT_SECONDS);
 
         loop {
+            // Lock and sort entries to prioritize the closest scheduled job.
             let mut entries = self.entries.lock().await;
             entries.sort_by(|b, a| b.next.cmp(&a.next));
 
+            // Determine the wait duration based on the next scheduled job.
             if let Some(entry) = entries.first() {
                 // get first entry from sorted entries for timer duration
                 let wait_milis = (entry.next.as_ref().unwrap().timestamp_millis() as u64)
@@ -121,8 +141,9 @@ where
             // release lock
             drop(entries);
 
+            // Use `select!` to handle multiple asynchronous tasks concurrently.
             select! {
-                // sleep and wait until next scheduled time
+                // Sleep until the next scheduled job is ready to run.
                 _ = tokio_time::sleep(wait_duration) => {
                     let now = self.now();
                     for entry in self.entries.lock().await.iter_mut() {
@@ -130,25 +151,27 @@ where
                             break;
                         }
 
+                        // Spawn the job to run asynchronously.
                         let run = entry.run.clone();
                         tokio::spawn(async move {
                             run.as_ref().get_pinned().await;
                         });
 
+                        // Schedule the next run of the job.
                         entry.next = entry.get_next(self.get_timezone());
                     }
                 },
-                // wait new entry added signal
+                // Add a new entry to the scheduler.
                  new_entry = add_rx.recv() => {
                     let mut entry = new_entry.unwrap();
                     entry.next = entry.get_next(self.get_timezone());
                     self.entries.lock().await.push(entry);
                 },
-                // wait entry removed signal
+                // Remove an entry from the scheduler by ID.
                  id = remove_rx.recv() => {
                     self.remove_entry(id.unwrap()).await;
                 },
-                // wait cron stopped signal
+                // Stop the cron scheduler.
                 _ = stop_rx.recv() => {
                     return;
                 },
@@ -156,6 +179,8 @@ where
         }
     }
 
+    /// Schedules a new job by creating an `AsyncEntry` and adding it to the scheduler.
+    /// If the scheduler is running, the job is added via the channel; otherwise, it's added directly.
     async fn schedule<F, T>(&mut self, schedule: cron::Schedule, f: F) -> Result<usize>
     where
         F: 'static + Fn() -> T + Send + Sync,
@@ -170,8 +195,10 @@ where
             run: Arc::new(TaskWrapper::new(f)),
         };
 
+        // Determine the next scheduled time for the job.
         entry.next = entry.get_next(self.get_timezone());
 
+        // If the cron is running, send the entry via the channel; otherwise, add it directly.
         match self.add_tx.lock().await.as_ref() {
             Some(tx) if self.running.load(Ordering::SeqCst) => tx.send(entry).unwrap(),
             _ => self.entries.lock().await.push(entry),
@@ -185,10 +212,11 @@ where
         self.tz = tz;
     }
 
-    /// Start cron in background.
-    /// A toki stask will be spawn for schedule jobs
+    /// Starts the cron scheduler in the background.
+    /// A separate task is spawned to handle scheduled jobs asynchronously.
     pub async fn start(&mut self) {
         let mut cloned = self.clone();
+        self.running.store(true, Ordering::SeqCst);
         tokio::spawn(async move {
             cloned.start_blocking().await;
         });

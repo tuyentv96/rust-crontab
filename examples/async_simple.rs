@@ -6,10 +6,8 @@ use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() {
-    let local_tz = Local::from_offset(&FixedOffset::east(7));
+    let local_tz = Local::from_offset(&FixedOffset::east_opt(7).unwrap());
     let mut cron = AsyncCron::new(local_tz);
-
-    let first_job_id = cron.add_fn("* * * * * *", print_now).await;
 
     cron.start().await;
 
@@ -23,14 +21,11 @@ async fn main() {
             println!("{} counter value: {}", now, counter);
         }
     })
-    .await;
+    .await
+    .unwrap();
 
     std::thread::sleep(std::time::Duration::from_secs(10));
 
     // stop cron
-    cron.stop();
-}
-
-async fn print_now() {
-    println!("now: {}", Local::now().to_string());
+    cron.stop().await;
 }

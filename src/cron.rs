@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
@@ -20,10 +20,14 @@ where
     entries: Arc<Mutex<Vec<Entry<Z>>>>,
     next_id: Arc<AtomicUsize>,
     tz: Z,
-    add_tx: crossbeam_channel::Sender<Entry<Z>>,
-    stop_tx: crossbeam_channel::Sender<bool>,
-    add_rx: crossbeam_channel::Receiver<Entry<Z>>,
-    stop_rx: crossbeam_channel::Receiver<bool>,
+    add_channel: (
+        crossbeam_channel::Sender<Entry<Z>>,
+        crossbeam_channel::Receiver<Entry<Z>>,
+    ),
+    stop_channel: (
+        crossbeam_channel::Sender<bool>,
+        crossbeam_channel::Receiver<bool>,
+    ),
 }
 
 /// Cron contains and executes the scheduled jobs.
@@ -42,17 +46,12 @@ where
     /// cron.start();    
     /// ```
     pub fn new(tz: Z) -> Cron<Z> {
-        let (add_tx, add_rx) = crossbeam_channel::unbounded();
-        let (stop_tx, stop_rx) = crossbeam_channel::unbounded();
-
         Cron {
             entries: Arc::new(Mutex::new(Vec::new())),
             next_id: Arc::new(AtomicUsize::new(0)),
             tz,
-            add_tx,
-            stop_tx,
-            add_rx,
-            stop_rx,
+            add_channel: crossbeam_channel::unbounded(),
+            stop_channel: crossbeam_channel::unbounded(),
         }
     }
 
@@ -89,7 +88,7 @@ where
         };
 
         entry.next = entry.schedule_next(self.get_timezone());
-        self.add_tx.send(entry).unwrap();
+        self.add_channel.0.send(entry).unwrap();
 
         Ok(next_id)
     }
@@ -145,7 +144,7 @@ where
     /// cron.stop();  
     /// ```
     pub fn stop(&self) {
-        self.stop_tx.send(true).unwrap()
+        self.stop_channel.0.send(true).unwrap()
     }
 
     /// Start cron.
@@ -208,12 +207,12 @@ where
                     }
                 },
                 // wait add new entry
-                recv(self.add_rx) -> new_entry => {
+                recv(self.add_channel.1) -> new_entry => {
                     let mut entry = new_entry.unwrap();
                     entry.next = entry.schedule_next(self.get_timezone());
                     self.entries.lock().unwrap().push(entry);
                 },
-                recv(self.stop_rx) -> _ => {
+                recv(self.stop_channel.1) -> _ => {
                     return;
                 },
             }

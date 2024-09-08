@@ -53,7 +53,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: tarpaulin
-          args: --all --verbose --all-features --out Lcov -- --test-threads 1
+          args: --all --verbose --all-features --out Lcov -- --test-threads 4
 
       - name: Upload to CodeCov
         uses: codecov/codecov-action@v4

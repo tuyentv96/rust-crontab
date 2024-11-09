@@ -11,7 +11,7 @@ use crate::entry::Entry;
 use crate::Result;
 use crate::MAX_WAIT_SECONDS;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Cron<Z>
 where
     Z: TimeZone + Sync + Send + 'static,

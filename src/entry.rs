@@ -1,8 +1,6 @@
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 
 use chrono::{DateTime, TimeZone};
-
-// use crate::EntryTimeZone;
 
 #[derive(Clone)]
 /// Entry wrap data about the job
@@ -14,6 +12,20 @@ where
     pub next: Option<DateTime<Z>>,
     pub run: Arc<dyn Fn() + Send + Sync + 'static>,
     pub schedule: cron::Schedule,
+}
+
+impl<Z> fmt::Debug for Entry<Z>
+where
+    Z: TimeZone + Sync + Send + 'static,
+    Z::Offset: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Entry")
+            .field("id", &self.id)
+            .field("next", &self.next)
+            .field("schedule", &self.schedule)
+            .finish()
+    }
 }
 
 impl<Z> Entry<Z>

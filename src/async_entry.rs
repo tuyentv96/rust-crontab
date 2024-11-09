@@ -48,6 +48,20 @@ where
     pub run: Arc<dyn TaskFuturePinned + Send + Sync>,
 }
 
+impl<Z> fmt::Debug for AsyncEntry<Z>
+where
+    Z: TimeZone + Send + Sync + 'static,
+    Z::Offset: fmt::Debug,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AsyncEntry")
+            .field("id", &self.id)
+            .field("schedule", &self.schedule)
+            .field("next", &self.next)
+            .finish()
+    }
+}
+
 impl<Z> AsyncEntry<Z>
 where
     Z: Send + Sync + 'static,
@@ -55,15 +69,5 @@ where
 {
     pub fn get_next(&self, tz: Z) -> Option<DateTime<Z>> {
         self.schedule.upcoming(tz).next()
-    }
-}
-
-impl<Z> fmt::Debug for AsyncEntry<Z>
-where
-    Z: Send + Sync + 'static,
-    Z: TimeZone,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {} {:?}", self.id, self.schedule, self.next)
     }
 }

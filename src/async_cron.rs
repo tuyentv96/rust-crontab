@@ -15,7 +15,7 @@ use crate::{Result, MAX_WAIT_SECONDS};
 /// The `AsyncCron` struct manages scheduled jobs that run asynchronously.
 /// It holds the job entries, keeps track of job IDs, and manages the state
 /// of the running cron.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AsyncCron<Z>
 where
     Z: TimeZone + Send + Sync + 'static,

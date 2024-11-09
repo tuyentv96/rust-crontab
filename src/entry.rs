@@ -23,7 +23,6 @@ where
         f.debug_struct("Entry")
             .field("id", &self.id)
             .field("next", &self.next)
-            .field("run", &"")
             .field("schedule", &self.schedule)
             .finish()
     }

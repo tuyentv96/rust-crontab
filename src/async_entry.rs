@@ -58,7 +58,6 @@ where
             .field("id", &self.id)
             .field("schedule", &self.schedule)
             .field("next", &self.next)
-            .field("run", &"")
             .finish()
     }
 }

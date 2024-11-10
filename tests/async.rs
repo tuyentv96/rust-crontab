@@ -1,3 +1,4 @@
+#[cfg(feature = "async")]
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;

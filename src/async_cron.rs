@@ -53,7 +53,7 @@ where
     pub async fn add_fn<F, T>(&mut self, spec: &str, f: F) -> Result<usize>
     where
         F: 'static + Fn() -> T + Send + Sync,
-        T: 'static + Future<Output = ()> + Send + Sync,
+        T: 'static + Future<Output = ()> + Send,
     {
         let schedule = cron::Schedule::from_str(spec)?;
         self.schedule(schedule, f).await
@@ -184,7 +184,7 @@ where
     async fn schedule<F, T>(&mut self, schedule: cron::Schedule, f: F) -> Result<usize>
     where
         F: 'static + Fn() -> T + Send + Sync,
-        T: 'static + Future<Output = ()> + Send + Sync,
+        T: 'static + Future<Output = ()> + Send,
     {
         let next_id = self.next_id.fetch_add(1, Ordering::SeqCst);
 

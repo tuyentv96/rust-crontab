@@ -1,5 +1,7 @@
+#[cfg(feature = "async")]
 #[cfg(test)]
 mod tests {
+    use std::cell::UnsafeCell;
     use std::sync::Arc;
 
     use chrono::{FixedOffset, Local, TimeZone};
@@ -28,9 +30,14 @@ mod tests {
 
         cron.add_fn("* * * * * *", move || {
             let counter1 = Arc::clone(&counter1);
+
+            // use UnsafeCell to make sure we can still use non-Sync types
+            let mut inc: UnsafeCell<usize> = 1.into();
+
             async move {
                 let mut value = counter1.lock().await;
-                *value += 1;
+                let inc = *inc.get_mut();
+                *value += inc;
             }
         })
         .await

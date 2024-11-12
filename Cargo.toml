@@ -26,7 +26,7 @@ cron = "0.12"
 thiserror = "1.0"
 crossbeam-channel = "0.5"
 tokio = { version = "1.25", optional = true, features = ["sync", "rt-multi-thread", "time", "macros"] }
-futures = { version = "0.3.26", optional = true }
+futures = { version = "0.3", optional = true }
 
 [[example]]
 name = "async_simple"

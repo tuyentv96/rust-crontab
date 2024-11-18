@@ -56,7 +56,7 @@ jobs:
           args: --all --verbose --all-features --out Lcov -- --test-threads 4
 
       - name: Upload to CodeCov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           # required for private repositories:
           token: ${{ secrets.CODECOV_TOKEN }}

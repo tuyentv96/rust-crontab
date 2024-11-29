@@ -32,3 +32,6 @@ futures = { version = "0.3", optional = true }
 name = "async_simple"
 path = "examples/async_simple.rs"
 required-features = ["async"]
+
+[package.metadata.docs.rs]
+all-features = true

@@ -22,7 +22,7 @@ all = ["async", "sync"]
 
 [dependencies]
 chrono = "0.4"
-cron = "0.13"
+cron = "0.14"
 thiserror = "2"
 crossbeam-channel = "0.5"
 tokio = { version = "1", optional = true, features = ["sync", "rt-multi-thread", "time", "macros"] }

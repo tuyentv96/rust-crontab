@@ -1,6 +1,6 @@
 [package]
 name = "cron_tab"
-version = "0.2.8"
+version = "0.2.9"
 authors = ["Tran Tuyen <vat1906@gmail.com>"]
 edition = "2018"
 description = "A cron job library for Rust."

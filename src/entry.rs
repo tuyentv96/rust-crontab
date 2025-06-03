@@ -105,3 +105,52 @@ where
         self.schedule.upcoming(tz).next()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_entry_debug() {
+        let entry: Entry<Utc> = Entry {
+            id: 1,
+            next: None,
+            run: Arc::new(|| {}),
+            schedule: "* * * * * *".parse().unwrap(),
+        };
+        
+        let debug_str = format!("{:?}", entry);
+        assert!(debug_str.contains("Entry"));
+        assert!(debug_str.contains("id: 1"));
+    }
+
+    #[test]
+    fn test_entry_schedule_next() {
+        let entry: Entry<Utc> = Entry {
+            id: 1,
+            next: None,
+            run: Arc::new(|| {}),
+            schedule: "* * * * * *".parse().unwrap(),
+        };
+        
+        let now = Utc::now();
+        let next = entry.schedule_next(Utc);
+        assert!(next.is_some());
+        assert!(next.unwrap() > now);
+    }
+
+    #[test]
+    fn test_entry_clone() {
+        let entry: Entry<Utc> = Entry {
+            id: 1,
+            next: None,
+            run: Arc::new(|| {}),
+            schedule: "* * * * * *".parse().unwrap(),
+        };
+        
+        let cloned = entry.clone();
+        assert_eq!(cloned.id, entry.id);
+    }
+}

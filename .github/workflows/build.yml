@@ -95,7 +95,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all --features all  # Test all packages with all features
+          args: --all-features  # Test all packages with all features
 
       # Step 7: Generate Coverage Report
       # Uses cargo-tarpaulin to analyze code coverage during test execution.

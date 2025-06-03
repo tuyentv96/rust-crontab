@@ -201,3 +201,55 @@ where
         self.schedule.upcoming(tz).next()
     }
 }
+
+#[cfg(all(test, feature = "async"))]
+mod tests {
+    use super::*;
+    use chrono::Utc;
+    use std::sync::{Arc, Mutex};
+
+    #[tokio::test]
+    async fn test_async_entry_debug() {
+        let entry: AsyncEntry<Utc> = AsyncEntry {
+            id: 1,
+            next: None,
+            schedule: "* * * * * *".parse().unwrap(),
+            run: Arc::new(TaskWrapper::new(|| async { })),
+        };
+        
+        let debug_str = format!("{:?}", entry);
+        assert!(debug_str.contains("AsyncEntry"));
+        assert!(debug_str.contains("id: 1"));
+    }
+
+    #[tokio::test]
+    async fn test_async_entry_get_next() {
+        let entry: AsyncEntry<Utc> = AsyncEntry {
+            id: 1,
+            next: None,
+            schedule: "* * * * * *".parse().unwrap(),
+            run: Arc::new(TaskWrapper::new(|| async { })),
+        };
+        
+        let now = Utc::now();
+        let next = entry.get_next(Utc);
+        assert!(next.is_some());
+        assert!(next.unwrap() > now);
+    }
+
+    #[tokio::test]
+    async fn test_task_wrapper() {
+        let executed = Arc::new(Mutex::new(false));
+        let executed_clone = Arc::clone(&executed);
+        
+        let wrapper = TaskWrapper::new(move || {
+            let executed = executed_clone.clone();
+            async move {
+                *executed.lock().unwrap() = true;
+            }
+        });
+        
+        wrapper.get_pinned().await;
+        assert!(*executed.lock().unwrap());
+    }
+}

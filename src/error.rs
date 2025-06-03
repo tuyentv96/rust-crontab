@@ -84,3 +84,38 @@ pub enum CronError {
     #[error("Unknown error")]
     Unknown,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_error_display() {
+        // Create a simple parse error
+        let result: Result<cron::Schedule, cron::error::Error> = "invalid".parse();
+        let cron_error = result.unwrap_err();
+        let error = CronError::ParseError(cron_error);
+        let error_string = format!("{}", error);
+        assert!(error_string.len() > 0);
+    }
+
+    #[test]
+    fn test_parse_error_debug() {
+        let result: Result<cron::Schedule, cron::error::Error> = "invalid".parse();
+        let cron_error = result.unwrap_err();
+        let error = CronError::ParseError(cron_error);
+        let debug_string = format!("{:?}", error);
+        assert!(debug_string.contains("ParseError"));
+    }
+
+    #[test]
+    fn test_error_from_cron_error() {
+        let result: Result<cron::Schedule, cron::error::Error> = "invalid".parse();
+        let cron_error = result.unwrap_err();
+        let error: CronError = cron_error.into();
+        match error {
+            CronError::ParseError(_) => {},
+            CronError::Unknown => {},
+        }
+    }
+}

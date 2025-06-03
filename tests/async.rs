@@ -4,6 +4,8 @@
 //! including basic async operations, comprehensive scheduling scenarios, error handling,
 //! and performance validation in async contexts.
 
+#![cfg(feature = "async")]
+
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -1206,20 +1208,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_scheduler_with_no_jobs() {
-        let mut cron = AsyncCron::new(Utc);
-        
-        // Start with no jobs
-        cron.start().await;
-        
-        // Wait a bit
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        
-        // Stop
-        cron.stop().await;
-    }
-
-    #[tokio::test]
     async fn test_multiple_stop_calls() {
         let mut cron = AsyncCron::new(Utc);
         
@@ -1648,5 +1636,77 @@ mod tests {
         
         // Stop without ever starting - this should test the None case in stop
         cron.stop().await;
+    }
+
+    #[tokio::test]
+    async fn test_precise_remove_not_running_coverage() {
+        let mut cron = AsyncCron::new(Utc);
+        
+        // Add job when NOT running (scheduler not started yet)
+        let job_id = cron.add_fn("* * * * * * *", || async {}).await.unwrap();
+        
+        // Remove when NOT running - this should hit the remove_entry path
+        // Since we never called start(), the scheduler is not running
+        cron.remove(job_id).await;
+    }
+
+    #[tokio::test]
+    async fn test_precise_schedule_running_coverage() {
+        let mut cron = AsyncCron::new(Utc);
+        
+        // Start the scheduler using start_blocking to ensure channels are set up
+        let mut cron_clone = cron.clone();
+        let handle = tokio::spawn(async move {
+            cron_clone.start_blocking().await;
+        });
+        
+        // Wait for start_blocking to fully initialize channels
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        
+        // Now add job when running=true AND channels are set up
+        // This should hit the channel send path
+        let job_id = cron.add_fn("* * * * * * *", || async {}).await.unwrap();
+        
+        // Stop and clean up
+        cron.stop().await;
+        
+        // Wait for the blocking task to finish
+        let _ = tokio::time::timeout(Duration::from_secs(1), handle).await;
+        
+        cron.remove(job_id).await;
+    }
+
+    #[tokio::test]
+    async fn test_schedule_fallback_path_coverage() {
+        let mut cron = AsyncCron::new(Utc);
+        
+        // Add job when not running - this should hit the fallback path
+        // Since start() hasn't been called, channels aren't set up yet
+        let job_id = cron.add_fn("* * * * * * *", || async {}).await.unwrap();
+        
+        cron.remove(job_id).await;
+    }
+
+    #[tokio::test]
+    async fn test_force_uncovered_paths() {
+        let mut cron = AsyncCron::new(Utc);
+        
+        // Test case 1: Add and remove job without starting scheduler
+        let job_id1 = cron.add_fn("* * * * * * *", || async {}).await.unwrap();
+        cron.remove(job_id1).await;
+        
+        // Test case 2: Test with potential edge case schedule
+        if let Ok(job_id2) = cron.add_fn("0 0 30 2 * * *", || async {}).await {
+            cron.remove(job_id2).await;
+        }
+        
+        // Test case 3: Start scheduler, add job, then stop
+        cron.start().await;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        
+        let job_id3 = cron.add_fn("* * * * * * *", || async {}).await.unwrap();
+        
+        cron.stop().await;
+        cron.remove(job_id3).await;
     }
 }

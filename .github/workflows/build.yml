@@ -1,19 +1,55 @@
+# GitHub Actions Workflow for CronTab Library
+#
+# This workflow handles continuous integration and testing for the CronTab Rust library.
+# It runs on every push and pull request to ensure code quality and compatibility.
+#
+# The workflow performs the following tasks:
+# 1. Sets up the Rust development environment
+# 2. Caches dependencies for faster builds
+# 3. Builds the project with all features
+# 4. Runs comprehensive tests
+# 5. Generates code coverage reports
+# 6. Uploads coverage data to CodeCov for tracking
+
 name: Build & Test
 
-on: [push, pull_request]
+# Trigger Configuration
+# The workflow runs on:
+# - Push events to the master branch (main development branch)
+# - All pull requests (to catch issues before merging)
+# This approach avoids unnecessary CI runs on feature branches while ensuring
+# comprehensive testing of the main branch and all proposed changes.
+on:
+  push:
+    branches: [ master ]
+  pull_request:
 
 jobs:
   build:
     name: Build & Test
+    # Use the latest Ubuntu runner for consistent, stable environment
     runs-on: ubuntu-latest
 
     steps:
+      # Step 1: Checkout Repository
+      # Downloads the repository code to the runner environment
       - uses: actions/checkout@v4
+
+      # Step 2: Dependency Caching
+      # Caches Cargo dependencies and build artifacts to speed up subsequent runs.
+      # This significantly reduces build times by avoiding re-downloading and 
+      # re-compiling unchanged dependencies.
       - name: Cache dependencies
         uses: actions/cache@v4
         env:
           cache-name: cache-dependencies
         with:
+          # Cache the following Cargo directories:
+          # - .crates.toml/.crates2.json: Installed binary metadata
+          # - bin: Installed binaries (like cargo-tarpaulin)
+          # - registry: Downloaded crate source code
+          # - git: Git-based dependencies
+          # - target: Compiled build artifacts
           path: |
             ~/.cargo/.crates.toml
             ~/.cargo/.crates2.json
@@ -21,44 +57,73 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
+          # Cache key includes OS and Cargo.lock hash for precise cache invalidation
           key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('Cargo.lock') }}
 
+      # Step 3: Rust Toolchain Installation
+      # Installs the stable Rust toolchain with all necessary components
       - name: Install toolchain
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
-          override: true
-          default: true
+          toolchain: stable    # Use stable Rust (latest stable release)
+          override: true       # Override any existing toolchain
+          default: true        # Set as the default toolchain
 
+      # Step 4: Build Project
+      # Compiles the project with all available features enabled.
+      # This ensures that both sync and async functionality works correctly.
       - name: Run build
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: --all-features
+          args: --all-features  # Enable all feature flags (sync, async)
 
+      # Step 5: Install Code Coverage Tool
+      # Installs cargo-tarpaulin for generating code coverage reports.
+      # Uses tool cache to avoid reinstalling if already cached.
       - name: Install cargo-tarpaulin
         uses: actions-rs/install@v0.1
         with:
-          crate: cargo-tarpaulin
-          version: latest
-          use-tool-cache: true
+          crate: cargo-tarpaulin  # Coverage tool for Rust
+          version: latest         # Always use the latest version
+          use-tool-cache: true    # Cache the installed tool
 
+      # Step 6: Run Test Suite
+      # Executes all tests across all workspace members with all features.
+      # The 'all' flag ensures comprehensive testing of the entire codebase.
       - name: Run tests
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --all --features all
+          args: --all --features all  # Test all packages with all features
 
+      # Step 7: Generate Coverage Report
+      # Uses cargo-tarpaulin to analyze code coverage during test execution.
+      # Generates LCOV format output for compatibility with CodeCov.
       - name: Coverage Report with tarpaulin
         uses: actions-rs/cargo@v1
         with:
           command: tarpaulin
           args: --all --verbose --all-features --out Lcov -- --test-threads 4
+          # Explanation of arguments:
+          # --all: Include all workspace members
+          # --verbose: Detailed output for debugging
+          # --all-features: Enable all feature flags during coverage
+          # --out Lcov: Output in LCOV format for CodeCov compatibility
+          # --test-threads 4: Use 4 threads for faster test execution
 
+      # Step 8: Upload Coverage to CodeCov
+      # Sends the generated coverage report to CodeCov service for tracking
+      # coverage trends and ensuring code quality standards.
       - name: Upload to CodeCov
         uses: codecov/codecov-action@v5
         with:
-          # required for private repositories:
+          # Authentication token for private repository access
+          # (Required for private repos, optional for public ones)
           token: ${{ secrets.CODECOV_TOKEN }}
+          
+          # Path to the coverage report file generated by tarpaulin
           files: ./lcov.info
+          
+          # Fail the CI if CodeCov upload fails (ensures coverage tracking)
           fail_ci_if_error: true

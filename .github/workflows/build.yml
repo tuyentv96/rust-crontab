@@ -33,7 +33,7 @@ jobs:
     steps:
       # Step 1: Checkout Repository
       # Downloads the repository code to the runner environment
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # Step 2: Dependency Caching
       # Caches Cargo dependencies and build artifacts to speed up subsequent runs.

@@ -80,6 +80,8 @@
 //! ## Asynchronous Usage Example
 //!
 //! ```rust
+//! # #[cfg(feature = "async")]
+//! # {
 //! use std::sync::Arc;
 //! use chrono::{FixedOffset, Local, TimeZone, Utc};
 //! use cron_tab::AsyncCron;
@@ -118,6 +120,7 @@
 //! let final_count = *counter.lock().await;
 //! println!("Final count: {}", final_count);
 //! # Ok(())
+//! # }
 //! # }
 //! ```
 //!

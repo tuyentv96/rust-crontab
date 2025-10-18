@@ -10,7 +10,6 @@ use std::thread;
 use std::time::Duration;
 
 use chrono::{DateTime, TimeZone, Utc};
-use crossbeam_channel;
 
 use crate::entry::Entry;
 use crate::Result;
@@ -155,7 +154,7 @@ where
     pub fn add_fn<T>(&mut self, spec: &str, f: T) -> Result<usize>
     where
         T: 'static,
-        T: Fn() -> () + Send + Sync,
+        T: Fn() + Send + Sync,
     {
         let schedule = cron::Schedule::from_str(spec)?;
         self.schedule(schedule, f)
@@ -168,7 +167,7 @@ where
     fn schedule<T>(&mut self, schedule: cron::Schedule, f: T) -> Result<usize>
     where
         T: Send + Sync + 'static,
-        T: Fn() -> (),
+        T: Fn(),
     {
         let next_id = self.next_id.fetch_add(1, Ordering::SeqCst);
 

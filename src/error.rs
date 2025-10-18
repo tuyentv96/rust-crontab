@@ -3,8 +3,6 @@
 //! This module defines the error types that can be returned by operations
 //! in the CronTab library, primarily from parsing cron expressions.
 
-use cron;
-use thiserror;
 
 /// Errors that can occur when using CronTab.
 ///

@@ -7,7 +7,6 @@ use std::{pin::Pin, sync::Arc};
 
 use chrono::{DateTime, TimeZone};
 use core::fmt;
-use cron;
 use futures::Future;
 
 /// A type alias for boxed async task futures.

@@ -1279,9 +1279,9 @@ mod tests {
     async fn test_timezone_scheduling_differences() {
         use chrono::FixedOffset;
         
-        let utc_cron = AsyncCron::new(Utc);
+        let _utc_cron = AsyncCron::new(Utc);
         let tokyo_tz = FixedOffset::east_opt(9 * 3600).unwrap();
-        let tokyo_cron = AsyncCron::new(tokyo_tz);
+        let _tokyo_cron = AsyncCron::new(tokyo_tz);
         
         // Get current time using chrono directly instead of private now() method
         let utc_now = Utc::now();

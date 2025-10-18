@@ -795,7 +795,7 @@ mod tests {
 
     #[test]
     fn test_empty_entries_with_start_blocking() {
-        let mut cron = Cron::new(Utc);
+        let cron = Cron::new(Utc);
         
         // Start with no entries to test empty case
         let cron_clone = cron.clone();

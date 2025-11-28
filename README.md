@@ -6,113 +6,100 @@
 [![codecov](https://codecov.io/gh/tuyentv96/rust-crontab/branch/master/graph/badge.svg?token=YF89MDH26R)](https://codecov.io/gh/tuyentv96/rust-crontab)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A modern, feature-rich cron job scheduler library for Rust applications with both synchronous and asynchronous execution support.
+A lightweight, thread-safe cron job scheduler for Rust with support for both sync and async execution.
 
-## ✨ Features
+## Features
 
-- 🔄 **Dual Execution Modes**: Support for both synchronous and asynchronous job execution
-- 🌍 **Timezone Support**: Full timezone handling with chrono integration
-- ⚡ **High Performance**: Efficient job scheduling with minimal overhead
-- 🛡️ **Thread Safe**: Built with Rust's safety guarantees in mind
-- 🎯 **Flexible Scheduling**: Standard cron expressions with second precision
-- 🔧 **Runtime Control**: Add, remove, start, and stop jobs at runtime
-- 📦 **Zero Config**: Works out of the box with sensible defaults
+- ⚡ **Sync & Async** - Choose the execution mode that fits your application
+- 🌍 **Timezone Aware** - Full timezone support via chrono
+- 🎯 **Second Precision** - 7-field cron expressions with second-level scheduling
+- 🔧 **Runtime Control** - Add, remove, start, and stop jobs dynamically
+- 🛡️ **Thread Safe** - Built with Rust's safety guarantees
 
-## 🚀 Quick Start
+## Installation
 
-Add CronTab to your `Cargo.toml`:
+Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
 cron_tab = { version = "0.2", features = ["sync", "async"] }
 ```
 
-### Basic Synchronous Usage
+## Usage
+
+### Synchronous Jobs
 
 ```rust
-use chrono::{FixedOffset, Local, TimeZone};
+use chrono::Utc;
 use cron_tab::Cron;
 
 fn main() {
-    let local_tz = Local::from_offset(&FixedOffset::east_opt(7).unwrap());
-    let mut cron = Cron::new(local_tz);
+    let mut cron = Cron::new(Utc);
 
     // Add a job that runs every second
     cron.add_fn("* * * * * * *", || {
-        println!("Job executed at: {}", Local::now());
+        println!("Running every second!");
     }).unwrap();
 
-    // Start the scheduler
     cron.start();
-
-    // Let it run for 10 seconds
     std::thread::sleep(std::time::Duration::from_secs(10));
-
-    // Stop the scheduler
     cron.stop();
 }
 ```
 
-### Basic Asynchronous Usage
+### Asynchronous Jobs
 
 ```rust
-use chrono::{FixedOffset, Local, TimeZone};
+use chrono::Utc;
 use cron_tab::AsyncCron;
 
 #[tokio::main]
 async fn main() {
-    let local_tz = Local::from_offset(&FixedOffset::east_opt(7).unwrap());
-    let mut cron = AsyncCron::new(local_tz);
+    let mut cron = AsyncCron::new(Utc);
 
-    // Add an async job
     cron.add_fn("* * * * * *", || async {
-        println!("Async job executed at: {}", Local::now());
-        // Simulate some async work
+        println!("Running every minute!");
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }).await.unwrap();
 
-    // Start the scheduler
     cron.start().await;
-
-    // Let it run for 10 seconds
-    tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-
-    // Stop the scheduler
+    tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
     cron.stop().await;
 }
 ```
 
-## 📋 Cron Expression Format
+## Cron Expression Format
 
-CronTab supports 7-field cron expressions with second precision:
+CronTab uses 7-field cron expressions with second precision:
 
 ```
-┌───────────── second (0 - 59)
-│ ┌─────────── minute (0 - 59)
-│ │ ┌───────── hour (0 - 23)
-│ │ │ ┌─────── day of month (1 - 31)
-│ │ │ │ ┌───── month (1 - 12)
-│ │ │ │ │ ┌─── day of week (0 - 6) (Sunday to Saturday)
-│ │ │ │ │ │ ┌─ year (1970 - 3000)
-│ │ │ │ │ │ │
-* * * * * * *
+sec  min  hour  day  month  weekday  year
+*    *    *     *    *      *        *
 ```
 
-### Common Cron Patterns
+**Field ranges:**
+- `sec`: 0-59
+- `min`: 0-59  
+- `hour`: 0-23
+- `day`: 1-31
+- `month`: 1-12
+- `weekday`: 0-6 (Sunday=0)
+- `year`: 1970-3000
+
+**Common patterns:**
 
 | Expression | Description |
 |------------|-------------|
 | `* * * * * * *` | Every second |
 | `0 * * * * * *` | Every minute |
 | `0 0 * * * * *` | Every hour |
-| `0 0 0 * * * *` | Every day at midnight |
-| `0 0 9 * * MON-FRI *` | Every weekday at 9 AM |
-| `0 0 0 1 * * *` | First day of every month |
-| `0 30 14 * * * *` | Every day at 2:30 PM |
+| `0 0 0 * * * *` | Daily at midnight |
+| `0 0 9 * * MON-FRI *` | Weekdays at 9 AM |
+| `0 30 14 * * * *` | Daily at 2:30 PM |
 
-## 🔧 Advanced Usage
+## Advanced Examples
 
-### Managing Jobs at Runtime
+### Managing Jobs Dynamically
 
 ```rust
 use chrono::Utc;
@@ -122,29 +109,21 @@ fn main() {
     let mut cron = Cron::new(Utc);
     cron.start();
 
-    // Add a job and store its ID
+    // Add a job and get its ID
     let job_id = cron.add_fn("*/5 * * * * * *", || {
-        println!("This runs every 5 seconds");
+        println!("Running every 5 seconds");
     }).unwrap();
 
-    // Let it run for a while
     std::thread::sleep(std::time::Duration::from_secs(15));
 
-    // Remove the job
+    // Remove the job dynamically
     cron.remove(job_id);
-    println!("Job removed!");
-
-    // Add a different job
-    cron.add_fn("*/10 * * * * * *", || {
-        println!("This runs every 10 seconds");
-    }).unwrap();
-
-    std::thread::sleep(std::time::Duration::from_secs(30));
+    
     cron.stop();
 }
 ```
 
-### Async Jobs with Shared State
+### Shared State in Async Jobs
 
 ```rust
 use std::sync::Arc;
@@ -155,143 +134,102 @@ use tokio::sync::Mutex;
 #[tokio::main]
 async fn main() {
     let mut cron = AsyncCron::new(Utc);
-    
-    // Shared counter
     let counter = Arc::new(Mutex::new(0));
     
-    // Job that increments counter
     let counter_clone = counter.clone();
     cron.add_fn("* * * * * * *", move || {
         let counter = counter_clone.clone();
         async move {
             let mut count = counter.lock().await;
             *count += 1;
-            println!("Counter: {}", *count);
+            println!("Count: {}", *count);
         }
     }).await.unwrap();
 
     cron.start().await;
     tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-    
-    let final_count = *counter.lock().await;
-    println!("Final count: {}", final_count);
-    
     cron.stop().await;
 }
 ```
 
-### Different Timezones
+### Using Custom Timezones
 
 ```rust
-use chrono::{FixedOffset, TimeZone, Utc};
+use chrono::FixedOffset;
 use cron_tab::Cron;
 
 fn main() {
-    // Tokyo timezone (UTC+9)
+    // UTC+9 (Tokyo)
     let tokyo_tz = FixedOffset::east_opt(9 * 3600).unwrap();
-    let mut cron_tokyo = Cron::new(tokyo_tz);
+    let mut cron = Cron::new(tokyo_tz);
 
-    // New York timezone (UTC-5)
-    let ny_tz = FixedOffset::west_opt(5 * 3600).unwrap();
-    let mut cron_ny = Cron::new(ny_tz);
+    cron.add_fn("0 0 9 * * * *", || {
+        println!("Good morning from Tokyo!");
+    }).unwrap();
 
-    // UTC timezone
-    let mut cron_utc = Cron::new(Utc);
-
-    // Jobs will run according to their respective timezones
-    cron_tokyo.add_fn("0 0 9 * * * *", || println!("Good morning from Tokyo!")).unwrap();
-    cron_ny.add_fn("0 0 9 * * * *", || println!("Good morning from New York!")).unwrap();
-    cron_utc.add_fn("0 0 9 * * * *", || println!("Good morning UTC!")).unwrap();
-
-    cron_tokyo.start();
-    cron_ny.start();
-    cron_utc.start();
-
-    // Let them run...
-    std::thread::sleep(std::time::Duration::from_secs(30));
+    cron.start();
+    // Jobs run according to the specified timezone
 }
 ```
 
-## ⚙️ Feature Flags
+## Feature Flags
 
-CronTab uses feature flags to minimize dependencies:
+Choose the features you need:
 
 ```toml
-[dependencies]
-# Include only sync support
-cron_tab = { version = "0.2", features = ["sync"] }
+# Sync only (default)
+cron_tab = "0.2"
 
-# Include only async support  
+# Async only
 cron_tab = { version = "0.2", features = ["async"] }
 
-# Include both (default)
-cron_tab = { version = "0.2", features = ["sync", "async"] }
-
-# All features
+# Both sync and async
 cron_tab = { version = "0.2", features = ["all"] }
 ```
 
-## 🧪 Running Examples
+## Examples
+
+Run the included examples:
 
 ```bash
-# Run the synchronous example
+# Synchronous example
 cargo run --example simple --features sync
 
-# Run the asynchronous example  
+# Asynchronous example
 cargo run --example async_simple --features async
 ```
 
-## 🔍 API Documentation
-
-For detailed API documentation, visit [docs.rs/cron_tab](https://docs.rs/cron_tab).
-
-## 🛠️ Development
-
-### Running Tests
+## Testing
 
 ```bash
-# Run all tests
+# All tests
 cargo test --all-features
 
-# Run only sync tests
+# Sync tests only
 cargo test --features sync
 
-# Run only async tests  
+# Async tests only
 cargo test --features async
 ```
 
-### Building Documentation
+## Contributing
 
-```bash
-cargo doc --all-features --open
-```
+Contributions are welcome! Please:
 
-## 🤝 Contributing
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes with tests
+4. Run `cargo fmt` and `cargo clippy --all-features`
+5. Submit a pull request
 
-Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
+For major changes, open an issue first to discuss your proposal.
 
-### Development Setup
+## License
 
-1. Clone the repository
-2. Install Rust (latest stable)
-3. Run tests: `cargo test --all-features`
-4. Check formatting: `cargo fmt`
-5. Run clippy: `cargo clippy --all-features`
+MIT License - see [LICENSE](LICENSE) for details.
 
-## 📄License
+## Links
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- Built with [cron](https://crates.io/crates/cron) for cron expression parsing
-- Uses [chrono](https://crates.io/crates/chrono) for timezone handling
-- Async support powered by [tokio](https://crates.io/crates/tokio)
-
----
-
-<div align="center">
-
-**[Documentation](https://docs.rs/cron_tab) • [Crates.io](https://crates.io/crates/cron_tab) • [Repository](https://github.com/tuyentv96/rust-crontab)**
-
-</div>
+- **[Documentation](https://docs.rs/cron_tab)** - Full API reference
+- **[Crates.io](https://crates.io/crates/cron_tab)** - Package registry
+- **[Repository](https://github.com/tuyentv96/rust-crontab)** - Source code

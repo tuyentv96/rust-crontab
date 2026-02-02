@@ -160,6 +160,105 @@ where
         self.schedule(schedule, f)
     }
 
+    /// Adds a function to be executed once at a specific datetime.
+    ///
+    /// The function will be called exactly once when the specified time is reached.
+    /// After execution, the job is automatically removed from the scheduler.
+    ///
+    /// # Arguments
+    ///
+    /// * `datetime` - The specific time when the job should execute
+    /// * `f` - A function that implements `Fn() + Send + Sync + 'static`
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result<usize, CronError>` where the `usize` is a unique job ID
+    /// that can be used with [`remove`](Self::remove) to cancel the job.
+    ///
+    /// # Behavior with Past Times
+    ///
+    /// If the specified datetime is in the past, the job will execute immediately
+    /// on the next scheduler iteration. This allows for jobs that may have been
+    /// scheduled while the system was offline or during startup.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use chrono::{Utc, Duration};
+    /// use cron_tab::Cron;
+    ///
+    /// let mut cron = Cron::new(Utc);
+    ///
+    /// // Execute once at a specific time
+    /// let target_time = Utc::now() + Duration::seconds(10);
+    /// let job_id = cron.add_fn_once(target_time, || {
+    ///     println!("This runs once at the specified time!");
+    /// }).unwrap();
+    /// ```
+    pub fn add_fn_once<T>(&mut self, datetime: DateTime<Z>, f: T) -> Result<usize>
+    where
+        T: 'static,
+        T: Fn() + Send + Sync,
+    {
+        let next_id = self.next_id.fetch_add(1, Ordering::SeqCst);
+
+        let entry = Entry {
+            id: next_id,
+            next: Some(datetime),
+            run: Arc::new(f),
+            schedule: None,
+            once: true,
+        };
+
+        self.add_channel.0.send(entry).unwrap();
+        Ok(next_id)
+    }
+
+    /// Adds a function to be executed once after a specified delay.
+    ///
+    /// The function will be called exactly once after the specified duration has passed.
+    /// After execution, the job is automatically removed from the scheduler.
+    ///
+    /// # Arguments
+    ///
+    /// * `delay` - The duration to wait before executing the job
+    /// * `f` - A function that implements `Fn() + Send + Sync + 'static`
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result<usize, CronError>` where the `usize` is a unique job ID
+    /// that can be used with [`remove`](Self::remove) to cancel the job.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::time::Duration;
+    /// use chrono::Utc;
+    /// use cron_tab::Cron;
+    ///
+    /// let mut cron = Cron::new(Utc);
+    ///
+    /// // Execute once after 30 seconds
+    /// let job_id = cron.add_fn_after(Duration::from_secs(30), || {
+    ///     println!("This runs once after 30 seconds!");
+    /// }).unwrap();
+    ///
+    /// // Execute after 5 minutes
+    /// let delayed_job = cron.add_fn_after(Duration::from_secs(300), || {
+    ///     println!("This runs after 5 minutes!");
+    /// }).unwrap();
+    /// ```
+    pub fn add_fn_after<T>(&mut self, delay: Duration, f: T) -> Result<usize>
+    where
+        T: 'static,
+        T: Fn() + Send + Sync,
+    {
+        let chrono_delay = chrono::Duration::from_std(delay)
+            .map_err(|_| crate::CronError::DurationOutOfRange)?;
+        let execute_at = self.now() + chrono_delay;
+        self.add_fn_once(execute_at, f)
+    }
+
     /// Internal method to schedule a job with a parsed cron schedule.
     ///
     /// This method generates a unique ID for the job and adds it to the scheduler.
@@ -175,7 +274,8 @@ where
             id: next_id,
             next: None,
             run: Arc::new(f),
-            schedule,
+            schedule: Some(schedule),
+            once: false,
         };
 
         entry.next = entry.schedule_next(self.get_timezone());
@@ -363,9 +463,11 @@ where
     /// cron.start_blocking();
     /// ```
     pub fn start_blocking(&mut self) {
-        // Initialize next execution times for all existing entries
+        // Initialize next execution times for entries that don't have one yet
         for entry in self.entries.lock().unwrap().iter_mut() {
-            entry.next = entry.schedule_next(self.get_timezone());
+            if entry.next.is_none() {
+                entry.next = entry.schedule_next(self.get_timezone());
+            }
         }
 
         // Default long timer duration for when no jobs are scheduled
@@ -373,7 +475,8 @@ where
 
         loop {
             let mut entries = self.entries.lock().unwrap();
-            // Sort entries by next execution time (earliest first)
+            // Filter out entries without a next execution time and sort by next execution time (earliest first)
+            entries.retain(|e| e.next.is_some());
             entries.sort_by(|b, a| b.next.cmp(&a.next));
 
             if let Some(entry) = entries.first() {
@@ -392,7 +495,10 @@ where
                 // Timer expired - check for jobs to execute
                 recv(crossbeam_channel::after(wait_duration)) -> _ => {
                     let now = self.now();
-                    for entry in self.entries.lock().unwrap().iter_mut() {
+                    let mut entries = self.entries.lock().unwrap();
+                    let mut jobs_to_remove = Vec::new();
+
+                    for entry in entries.iter_mut() {
                         // Stop when we reach jobs that aren't due yet
                         if entry.next.as_ref().unwrap().gt(&now) {
                             break;
@@ -404,14 +510,24 @@ where
                             run();
                         });
 
-                        // Schedule the next execution
-                        entry.next = entry.schedule_next(self.get_timezone());
+                        // Mark one-time jobs for removal
+                        if entry.once {
+                            jobs_to_remove.push(entry.id);
+                        } else {
+                            // Schedule the next execution for recurring jobs
+                            entry.next = entry.schedule_next(self.get_timezone());
+                        }
                     }
+
+                    // Remove one-time jobs that have been executed
+                    entries.retain(|e| !jobs_to_remove.contains(&e.id));
                 },
                 // New job added while running
                 recv(self.add_channel.1) -> new_entry => {
                     let mut entry = new_entry.unwrap();
-                    entry.next = entry.schedule_next(self.get_timezone());
+                    if entry.next.is_none() {
+                        entry.next = entry.schedule_next(self.get_timezone());
+                    }
                     self.entries.lock().unwrap().push(entry);
                 },
                 // Stop signal received

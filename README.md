@@ -13,6 +13,7 @@ A lightweight, thread-safe cron job scheduler for Rust with support for both syn
 - ⚡ **Sync & Async** - Choose the execution mode that fits your application
 - 🌍 **Timezone Aware** - Full timezone support via chrono
 - 🎯 **Second Precision** - 7-field cron expressions with second-level scheduling
+- ⏰ **One-Time Execution** - Schedule tasks to run once at a specific time or after a delay
 - 🔧 **Runtime Control** - Add, remove, start, and stop jobs dynamically
 - 🛡️ **Thread Safe** - Built with Rust's safety guarantees
 
@@ -99,6 +100,61 @@ sec  min  hour  day  month  weekday  year
 
 ## Advanced Examples
 
+### One-Time Execution
+
+Schedule tasks to run exactly once at a specific time or after a delay:
+
+```rust
+use chrono::{Duration, Utc};
+use cron_tab::Cron;
+
+fn main() {
+    let mut cron = Cron::new(Utc);
+
+    // Execute once after a delay
+    cron.add_fn_after(std::time::Duration::from_secs(5), || {
+        println!("This runs once after 5 seconds");
+    }).unwrap();
+
+    // Execute once at a specific datetime
+    let target_time = Utc::now() + Duration::seconds(10);
+    cron.add_fn_once(target_time, || {
+        println!("This runs once at the specified time");
+    }).unwrap();
+
+    cron.start();
+    std::thread::sleep(std::time::Duration::from_secs(12));
+    cron.stop();
+}
+```
+
+### Async One-Time Execution
+
+```rust
+use chrono::{Duration, Utc};
+use cron_tab::AsyncCron;
+
+#[tokio::main]
+async fn main() {
+    let mut cron = AsyncCron::new(Utc);
+
+    // Execute once after a delay
+    cron.add_fn_after(std::time::Duration::from_secs(5), || async {
+        println!("Async task runs once after 5 seconds");
+    }).await.unwrap();
+
+    // Execute once at a specific datetime
+    let target_time = Utc::now() + Duration::seconds(10);
+    cron.add_fn_once(target_time, || async {
+        println!("Async task runs once at the specified time");
+    }).await.unwrap();
+
+    cron.start().await;
+    tokio::time::sleep(std::time::Duration::from_secs(12)).await;
+    cron.stop().await;
+}
+```
+
 ### Managing Jobs Dynamically
 
 ```rust
@@ -118,7 +174,7 @@ fn main() {
 
     // Remove the job dynamically
     cron.remove(job_id);
-    
+
     cron.stop();
 }
 ```

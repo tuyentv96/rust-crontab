@@ -107,7 +107,7 @@ where
 /// * `Z` - A timezone type that implements `TimeZone + Send + Sync + 'static`
 ///
 /// # Note
-/// 
+///
 /// This type is primarily used internally by the AsyncCron scheduler and is not
 /// typically constructed directly by user code.
 #[derive(Clone)]
@@ -121,24 +121,28 @@ where
     /// This ID is used to remove or manage the job after it has been added
     /// to the async scheduler.
     pub id: usize,
-    
+
     /// The cron schedule that determines when this async job should run.
     ///
     /// This uses the `cron::Schedule` type from the cron crate to parse
     /// and calculate execution times.
-    pub schedule: cron::Schedule,
-    
+    /// `None` for one-time jobs.
+    pub schedule: Option<cron::Schedule>,
+
     /// The next scheduled execution time for this async job.
     ///
     /// This is calculated based on the cron schedule and current time.
     /// `None` indicates the job hasn't been scheduled yet.
     pub next: Option<DateTime<Z>>,
-    
+
     /// The async task to execute when the job runs.
     ///
     /// This is an `Arc<dyn TaskFuturePinned>` to allow the task to be safely
     /// shared between async contexts and cloned when spawning execution tasks.
     pub run: Arc<dyn TaskFuturePinned + Send + Sync>,
+
+    /// Indicates whether this is a one-time job that should be removed after execution.
+    pub once: bool,
 }
 
 impl<Z> fmt::Debug for AsyncEntry<Z>
@@ -172,7 +176,8 @@ where
     /// # Returns
     ///
     /// Returns `Some(DateTime<Z>)` with the next execution time, or `None`
-    /// if no future execution time can be determined.
+    /// if no future execution time can be determined (including for one-time jobs
+    /// that have already been scheduled).
     ///
     /// # Examples
     ///
@@ -185,19 +190,25 @@ where
     /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
     /// // Create an async cron scheduler to demonstrate scheduling
     /// let mut cron = AsyncCron::new(Utc);
-    /// 
+    ///
     /// // Add an async job that runs every hour
     /// let job_id = cron.add_fn("0 0 * * * * *", || async {
     ///     println!("Hourly async job executed!");
     /// }).await?;
-    /// 
+    ///
     /// // The scheduler internally calculates next execution times
     /// // This is typically handled automatically by the AsyncCron scheduler
     /// # Ok(())
     /// # }
     /// ```
     pub fn get_next(&self, tz: Z) -> Option<DateTime<Z>> {
-        self.schedule.upcoming(tz).next()
+        // For one-time jobs, don't reschedule
+        if self.once {
+            return None;
+        }
+
+        // For recurring jobs, use the cron schedule
+        self.schedule.as_ref().and_then(|s| s.upcoming(tz).next())
     }
 }
 
@@ -212,10 +223,11 @@ mod tests {
         let entry: AsyncEntry<Utc> = AsyncEntry {
             id: 1,
             next: None,
-            schedule: "* * * * * *".parse().unwrap(),
+            schedule: Some("* * * * * *".parse().unwrap()),
             run: Arc::new(TaskWrapper::new(|| async { })),
+            once: false,
         };
-        
+
         let debug_str = format!("{:?}", entry);
         assert!(debug_str.contains("AsyncEntry"));
         assert!(debug_str.contains("id: 1"));
@@ -226,14 +238,30 @@ mod tests {
         let entry: AsyncEntry<Utc> = AsyncEntry {
             id: 1,
             next: None,
-            schedule: "* * * * * *".parse().unwrap(),
+            schedule: Some("* * * * * *".parse().unwrap()),
             run: Arc::new(TaskWrapper::new(|| async { })),
+            once: false,
         };
-        
+
         let now = Utc::now();
         let next = entry.get_next(Utc);
         assert!(next.is_some());
         assert!(next.unwrap() > now);
+    }
+
+    #[tokio::test]
+    async fn test_async_entry_once() {
+        let entry: AsyncEntry<Utc> = AsyncEntry {
+            id: 1,
+            next: Some(Utc::now()),
+            schedule: None,
+            run: Arc::new(TaskWrapper::new(|| async { })),
+            once: true,
+        };
+
+        // One-time jobs should not reschedule
+        let next = entry.get_next(Utc);
+        assert!(next.is_none());
     }
 
     #[tokio::test]

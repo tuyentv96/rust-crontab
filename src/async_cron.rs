@@ -151,6 +151,118 @@ where
         self.schedule(schedule, f).await
     }
 
+    /// Adds an async function to be executed once at a specific datetime.
+    ///
+    /// The function will be called exactly once when the specified time is reached.
+    /// After execution, the job is automatically removed from the scheduler.
+    ///
+    /// # Arguments
+    ///
+    /// * `datetime` - The specific time when the job should execute
+    /// * `f` - A function that returns a Future implementing `Future<Output = ()> + Send + 'static`
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result<usize, CronError>` where the `usize` is a unique job ID
+    /// that can be used with [`remove`](Self::remove) to cancel the job.
+    ///
+    /// # Behavior with Past Times
+    ///
+    /// If the specified datetime is in the past, the job will execute immediately
+    /// on the next scheduler iteration. This allows for jobs that may have been
+    /// scheduled while the system was offline or during startup.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use chrono::{Utc, Duration};
+    /// use cron_tab::AsyncCron;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut cron = AsyncCron::new(Utc);
+    ///
+    /// // Execute once at a specific time
+    /// let target_time = Utc::now() + Duration::seconds(10);
+    /// let job_id = cron.add_fn_once(target_time, || async {
+    ///     println!("This runs once at the specified time!");
+    /// }).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn add_fn_once<F, T>(&mut self, datetime: DateTime<Z>, f: F) -> Result<usize>
+    where
+        F: 'static + Fn() -> T + Send + Sync,
+        T: 'static + Future<Output = ()> + Send,
+    {
+        let next_id = self.next_id.fetch_add(1, Ordering::SeqCst);
+
+        let entry = AsyncEntry {
+            id: next_id,
+            schedule: None,
+            next: Some(datetime),
+            run: Arc::new(TaskWrapper::new(f)),
+            once: true,
+        };
+
+        // If the cron is running, send the entry via the channel; otherwise, add it directly.
+        match self.add_tx.lock().await.as_ref() {
+            Some(tx) if self.running.load(Ordering::SeqCst) => tx.send(entry).unwrap(),
+            _ => self.entries.lock().await.push(entry),
+        }
+
+        Ok(next_id)
+    }
+
+    /// Adds an async function to be executed once after a specified delay.
+    ///
+    /// The function will be called exactly once after the specified duration has passed.
+    /// After execution, the job is automatically removed from the scheduler.
+    ///
+    /// # Arguments
+    ///
+    /// * `delay` - The duration to wait before executing the job
+    /// * `f` - A function that returns a Future implementing `Future<Output = ()> + Send + 'static`
+    ///
+    /// # Returns
+    ///
+    /// Returns a `Result<usize, CronError>` where the `usize` is a unique job ID
+    /// that can be used with [`remove`](Self::remove) to cancel the job.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use std::time::Duration;
+    /// use chrono::Utc;
+    /// use cron_tab::AsyncCron;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let mut cron = AsyncCron::new(Utc);
+    ///
+    /// // Execute once after 30 seconds
+    /// let job_id = cron.add_fn_after(Duration::from_secs(30), || async {
+    ///     println!("This runs once after 30 seconds!");
+    /// }).await?;
+    ///
+    /// // Execute after 5 minutes
+    /// let delayed_job = cron.add_fn_after(Duration::from_secs(300), || async {
+    ///     println!("This runs after 5 minutes!");
+    /// }).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn add_fn_after<F, T>(&mut self, delay: Duration, f: F) -> Result<usize>
+    where
+        F: 'static + Fn() -> T + Send + Sync,
+        T: 'static + Future<Output = ()> + Send,
+    {
+        let chrono_delay = chrono::Duration::from_std(delay)
+            .map_err(|_| crate::CronError::DurationOutOfRange)?;
+        let execute_at = self.now() + chrono_delay;
+        self.add_fn_once(execute_at, f).await
+    }
+
     /// Returns a clone of the current timezone.
     fn get_timezone(&self) -> Z {
         self.tz.clone()
@@ -295,9 +407,11 @@ where
             *self.stop_tx.lock().await = Some(stop_tx);
         }
 
-        // Initialize the next scheduled time for all entries.
+        // Initialize the next scheduled time for entries that don't have one yet.
         for entry in self.entries.lock().await.iter_mut() {
-            entry.next = entry.get_next(self.get_timezone());
+            if entry.next.is_none() {
+                entry.next = entry.get_next(self.get_timezone());
+            }
         }
 
         // Set a default long wait duration for sleeping.
@@ -306,6 +420,8 @@ where
         loop {
             // Lock and sort entries to prioritize the closest scheduled job.
             let mut entries = self.entries.lock().await;
+            // Filter out entries without a next execution time and sort by next execution time (earliest first)
+            entries.retain(|e| e.next.is_some());
             entries.sort_by(|b, a| b.next.cmp(&a.next));
 
             // Determine the wait duration based on the next scheduled job.
@@ -325,7 +441,10 @@ where
                 // Timer expired - check for jobs to execute
                 _ = tokio_time::sleep(wait_duration) => {
                     let now = self.now();
-                    for entry in self.entries.lock().await.iter_mut() {
+                    let mut entries = self.entries.lock().await;
+                    let mut jobs_to_remove = Vec::new();
+
+                    for entry in entries.iter_mut() {
                         // Stop when we reach jobs that aren't due yet
                         if entry.next.as_ref().unwrap().gt(&now) {
                             break;
@@ -337,14 +456,24 @@ where
                             run.as_ref().get_pinned().await;
                         });
 
-                        // Schedule the next run of the job.
-                        entry.next = entry.get_next(self.get_timezone());
+                        // Mark one-time jobs for removal
+                        if entry.once {
+                            jobs_to_remove.push(entry.id);
+                        } else {
+                            // Schedule the next run of the job.
+                            entry.next = entry.get_next(self.get_timezone());
+                        }
                     }
+
+                    // Remove one-time jobs that have been executed
+                    entries.retain(|e| !jobs_to_remove.contains(&e.id));
                 },
                 // New job added while running
                  new_entry = add_rx.recv() => {
                     let mut entry = new_entry.unwrap();
-                    entry.next = entry.get_next(self.get_timezone());
+                    if entry.next.is_none() {
+                        entry.next = entry.get_next(self.get_timezone());
+                    }
                     self.entries.lock().await.push(entry);
                 },
                 // Job removal requested
@@ -373,9 +502,10 @@ where
 
         let mut entry = AsyncEntry {
             id: next_id,
-            schedule,
+            schedule: Some(schedule),
             next: None,
             run: Arc::new(TaskWrapper::new(f)),
+            once: false,
         };
 
         // Determine the next scheduled time for the job.

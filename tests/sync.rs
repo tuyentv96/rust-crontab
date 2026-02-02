@@ -18,9 +18,218 @@ mod tests {
     use chrono::{FixedOffset, Local, TimeZone, Utc};
     use cron_tab::{Cron, CronError};
 
-    // ===============================
+    // ONE-TIME EXECUTION TESTS
+
+    #[test]
+    fn test_add_fn_once() {
+        let mut cron = Cron::new(Utc);
+
+        let counter = Arc::new(Mutex::new(0));
+        let counter1 = Arc::clone(&counter);
+
+        // Schedule a one-time job 2 seconds in the future
+        let target_time = Utc::now() + chrono::Duration::seconds(2);
+        cron.add_fn_once(target_time, move || {
+            let mut value = counter1.lock().unwrap();
+            *value += 1;
+        })
+        .unwrap();
+
+        cron.start();
+
+        // Wait before the job should execute
+        sleep(Duration::from_millis(1500));
+        assert_eq!(*counter.lock().unwrap(), 0, "Job should not have executed yet");
+
+        // Wait for the job to execute
+        sleep(Duration::from_millis(1000));
+        assert_eq!(*counter.lock().unwrap(), 1, "Job should have executed once");
+
+        // Wait longer to ensure it doesn't execute again
+        sleep(Duration::from_millis(2000));
+        assert_eq!(*counter.lock().unwrap(), 1, "Job should only execute once");
+
+        cron.stop();
+    }
+
+    #[test]
+    fn test_add_fn_after() {
+        let mut cron = Cron::new(Utc);
+
+        let counter = Arc::new(Mutex::new(0));
+        let counter1 = Arc::clone(&counter);
+
+        // Schedule a job to run after 2 seconds
+        cron.add_fn_after(Duration::from_secs(2), move || {
+            let mut value = counter1.lock().unwrap();
+            *value += 1;
+        })
+        .unwrap();
+
+        cron.start();
+
+        // Wait before the job should execute
+        sleep(Duration::from_millis(1500));
+        assert_eq!(*counter.lock().unwrap(), 0, "Job should not have executed yet");
+
+        // Wait for the job to execute
+        sleep(Duration::from_millis(1000));
+        assert_eq!(*counter.lock().unwrap(), 1, "Job should have executed once");
+
+        // Wait longer to ensure it doesn't execute again
+        sleep(Duration::from_millis(2000));
+        assert_eq!(*counter.lock().unwrap(), 1, "Job should only execute once");
+
+        cron.stop();
+    }
+
+    #[test]
+    fn test_multiple_one_time_jobs() {
+        let mut cron = Cron::new(Utc);
+
+        let counter = Arc::new(Mutex::new(0));
+        let counter1 = Arc::clone(&counter);
+        let counter2 = Arc::clone(&counter);
+        let counter3 = Arc::clone(&counter);
+
+        // Schedule multiple one-time jobs at different times
+        cron.add_fn_after(Duration::from_secs(1), move || {
+            let mut value = counter1.lock().unwrap();
+            *value += 1;
+        })
+        .unwrap();
+
+        cron.add_fn_after(Duration::from_secs(2), move || {
+            let mut value = counter2.lock().unwrap();
+            *value += 10;
+        })
+        .unwrap();
+
+        cron.add_fn_after(Duration::from_secs(3), move || {
+            let mut value = counter3.lock().unwrap();
+            *value += 100;
+        })
+        .unwrap();
+
+        cron.start();
+
+        sleep(Duration::from_millis(1500));
+        assert_eq!(*counter.lock().unwrap(), 1, "First job should have executed");
+
+        sleep(Duration::from_millis(1000));
+        assert_eq!(*counter.lock().unwrap(), 11, "Second job should have executed");
+
+        sleep(Duration::from_millis(1000));
+        assert_eq!(*counter.lock().unwrap(), 111, "Third job should have executed");
+
+        // Wait to ensure no more executions
+        sleep(Duration::from_millis(1000));
+        assert_eq!(*counter.lock().unwrap(), 111, "No more jobs should execute");
+
+        cron.stop();
+    }
+
+    #[test]
+    fn test_remove_one_time_job_before_execution() {
+        let mut cron = Cron::new(Utc);
+
+        let counter = Arc::new(Mutex::new(0));
+        let counter1 = Arc::clone(&counter);
+
+        // Schedule a one-time job
+        let job_id = cron
+            .add_fn_after(Duration::from_secs(2), move || {
+                let mut value = counter1.lock().unwrap();
+                *value += 1;
+            })
+            .unwrap();
+
+        cron.start();
+
+        // Remove the job before it executes
+        sleep(Duration::from_millis(500));
+        cron.remove(job_id);
+
+        // Wait past when the job would have executed
+        sleep(Duration::from_millis(2000));
+        assert_eq!(*counter.lock().unwrap(), 0, "Removed job should not execute");
+
+        cron.stop();
+    }
+
+    #[test]
+    fn test_mix_recurring_and_one_time_jobs() {
+        let mut cron = Cron::new(Utc);
+
+        let recurring_counter = Arc::new(Mutex::new(0));
+        let recurring_counter1 = Arc::clone(&recurring_counter);
+
+        let once_counter = Arc::new(Mutex::new(0));
+        let once_counter1 = Arc::clone(&once_counter);
+
+        // Add a recurring job that runs every second
+        cron.add_fn("* * * * * * *", move || {
+            let mut value = recurring_counter1.lock().unwrap();
+            *value += 1;
+        })
+        .unwrap();
+
+        // Add a one-time job that runs after 2 seconds
+        cron.add_fn_after(Duration::from_secs(2), move || {
+            let mut value = once_counter1.lock().unwrap();
+            *value += 1;
+        })
+        .unwrap();
+
+        cron.start();
+
+        sleep(Duration::from_millis(3500));
+
+        let recurring_count = *recurring_counter.lock().unwrap();
+        let once_count = *once_counter.lock().unwrap();
+
+        // Recurring job should have executed multiple times
+        assert!(
+            recurring_count >= 2,
+            "Recurring job should execute multiple times, got {}",
+            recurring_count
+        );
+
+        // One-time job should have executed exactly once
+        assert_eq!(once_count, 1, "One-time job should execute exactly once");
+
+        cron.stop();
+    }
+
+    #[test]
+    fn test_duration_out_of_range_error() {
+        let mut cron = Cron::new(Utc);
+
+        // Test with an extremely large duration that exceeds chrono's limit
+        let very_long_time = Duration::from_secs(u64::MAX);
+        let result = cron.add_fn_after(very_long_time, || {
+            println!("This should not execute");
+        });
+
+        assert!(result.is_err(), "Should fail with DurationOutOfRange");
+        match result {
+            Err(CronError::DurationOutOfRange) => {
+                // Success - correct error type
+            }
+            Err(e) => panic!("Expected DurationOutOfRange, got {:?}", e),
+            Ok(_) => panic!("Should have returned an error"),
+        }
+
+        // Test with a reasonable duration (should succeed)
+        let normal_duration = Duration::from_secs(10);
+        let result = cron.add_fn_after(normal_duration, || {
+            println!("This will execute");
+        });
+
+        assert!(result.is_ok(), "Should succeed with normal duration");
+    }
+
     // BASIC FUNCTIONALITY TESTS
-    // ===============================
 
     #[test]
     fn start_and_stop_cron() {
@@ -135,9 +344,7 @@ mod tests {
         assert_eq!(value, 0, "Should not execute after removal");
     }
 
-    // ===============================
     // ERROR HANDLING TESTS
-    // ===============================
 
     #[test]
     fn test_invalid_cron_expressions() {
@@ -302,9 +509,7 @@ mod tests {
         assert!(result.is_ok());
     }
 
-    // ===============================
     // PERFORMANCE TESTS
-    // ===============================
 
     #[test]
     fn test_startup_performance() {
@@ -381,9 +586,7 @@ mod tests {
                "Removing 500 jobs took too long: {:?}", removal_time);
     }
 
-    // ===============================
     // INTEGRATION TESTS
-    // ===============================
 
     #[test]
     fn test_real_world_scheduling_scenario() {
@@ -478,9 +681,7 @@ mod tests {
         }
     }
 
-    // ===============================
     // THREAD SAFETY & MEMORY SAFETY TESTS
-    // ===============================
 
     #[test]
     fn test_concurrent_job_access() {
@@ -1012,9 +1213,7 @@ mod tests {
         assert_eq!(final_active, 0, "All jobs should have completed, {} still active", final_active);
     }
 
-    // ===============================
     // UNSAFECELL & NON-SYNC TYPE TESTS
-    // ===============================
 
     #[test]
     fn test_unsafe_cell_in_job() {
@@ -1312,9 +1511,7 @@ mod tests {
         }
     }
 
-    // ===============================
     // COVERAGE IMPROVEMENT TESTS
-    // ===============================
 
     #[test]
     fn test_remove_from_stopped_scheduler_sync() {
@@ -1459,16 +1656,368 @@ mod tests {
         // Test creating an entry-like structure directly for testing
         // Since entry module is private, we'll test through the public API
         let mut cron = Cron::new(Utc);
-        
+
         // Test with a schedule that might have edge cases (Feb 29th - leap year)
         let job_id = cron.add_fn("0 0 0 29 2 * *", || {}).unwrap();
-        
+
         // The job should be created successfully and scheduled properly
         cron.start();
         thread::sleep(Duration::from_millis(100));
         cron.stop();
-        
+
         // Clean up
         cron.remove(job_id);
+    }
+
+    #[test]
+    fn test_set_timezone_functionality() {
+        // Create cron with FixedOffset timezone
+        let initial_tz = FixedOffset::east_opt(0).unwrap(); // UTC equivalent
+        let mut cron = Cron::new(initial_tz);
+
+        // Add a job with initial timezone
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = counter.clone();
+        let job_id = cron.add_fn("* * * * * * *", move || {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        }).unwrap();
+
+        // Change timezone to Tokyo (UTC+9)
+        let tokyo_tz = FixedOffset::east_opt(9 * 3600).unwrap();
+        cron.set_timezone(tokyo_tz);
+
+        // Start and run briefly
+        cron.start();
+        thread::sleep(Duration::from_millis(1100));
+        cron.stop();
+
+        // Job should still execute
+        let count = counter.load(Ordering::SeqCst);
+        assert!(count >= 1, "Job should execute after timezone change");
+
+        // Clean up
+        cron.remove(job_id);
+    }
+
+    #[test]
+    fn test_set_timezone_multiple_times() {
+        // Create with FixedOffset so we can change to other FixedOffsets
+        let initial_tz = FixedOffset::east_opt(0).unwrap();
+        let mut cron = Cron::new(initial_tz);
+
+        // Change timezone multiple times
+        cron.set_timezone(FixedOffset::east_opt(5 * 3600).unwrap());
+        cron.set_timezone(FixedOffset::west_opt(8 * 3600).unwrap());
+        cron.set_timezone(FixedOffset::east_opt(9 * 3600).unwrap());
+        cron.set_timezone(FixedOffset::east_opt(0).unwrap()); // Back to UTC equivalent
+
+        // Verify cron still works
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = counter.clone();
+        let _job_id = cron.add_fn("* * * * * * *", move || {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        }).unwrap();
+
+        cron.start();
+        thread::sleep(Duration::from_millis(1100));
+        cron.stop();
+
+        assert!(counter.load(Ordering::SeqCst) >= 1);
+    }
+
+    #[test]
+    fn test_start_blocking_timer_expiry() {
+        let mut cron = Cron::new(Utc);
+        let executed = Arc::new(AtomicBool::new(false));
+        let executed_clone = executed.clone();
+
+        // Add job that executes immediately (every second)
+        let _job_id = cron.add_fn("* * * * * * *", move || {
+            executed_clone.store(true, Ordering::SeqCst);
+        }).unwrap();
+
+        // Run start_blocking in a thread to exercise the timer expiry path
+        let mut cron_clone = cron.clone();
+        let handle = thread::spawn(move || {
+            cron_clone.start_blocking();
+        });
+
+        // Wait for job to execute via timer expiry
+        thread::sleep(Duration::from_millis(1200));
+
+        // Stop to trigger stop channel
+        cron.stop();
+
+        // Wait for blocking thread to finish
+        let _ = handle.join();
+
+        // Verify timer expiry branch was taken
+        assert!(executed.load(Ordering::SeqCst), "Timer expiry should execute job");
+    }
+
+    #[test]
+    fn test_start_blocking_add_channel() {
+        let mut cron = Cron::new(Utc);
+        let executed = Arc::new(AtomicBool::new(false));
+        let executed_clone = executed.clone();
+
+        // Start blocking in background thread
+        let mut cron_clone = cron.clone();
+        let handle = thread::spawn(move || {
+            cron_clone.start_blocking();
+        });
+
+        // Wait for start_blocking to initialize
+        thread::sleep(Duration::from_millis(100));
+
+        // Add job while running to exercise add_channel branch
+        let _job_id = cron.add_fn("* * * * * * *", move || {
+            executed_clone.store(true, Ordering::SeqCst);
+        }).unwrap();
+
+        // Wait for job to execute
+        thread::sleep(Duration::from_millis(1200));
+
+        // Stop to trigger stop channel
+        cron.stop();
+
+        // Wait for thread to finish
+        let _ = handle.join();
+
+        // Verify add channel was used
+        assert!(executed.load(Ordering::SeqCst), "Job added via channel should execute");
+    }
+
+    #[test]
+    fn test_start_blocking_stop_channel() {
+        let mut cron = Cron::new(Utc);
+
+        // Add a long-running job
+        let _job_id = cron.add_fn("*/10 * * * * * *", || {
+            thread::sleep(Duration::from_millis(50));
+        }).unwrap();
+
+        // Start blocking in background
+        let mut cron_clone = cron.clone();
+        let start_time = Instant::now();
+        let handle = thread::spawn(move || {
+            cron_clone.start_blocking();
+        });
+
+        // Wait a bit then stop via stop channel
+        thread::sleep(Duration::from_millis(200));
+        cron.stop();
+
+        // Wait for thread to finish
+        let _ = handle.join();
+        let elapsed = start_time.elapsed();
+
+        // Should stop relatively quickly (within 1 second)
+        assert!(elapsed < Duration::from_secs(1), "Stop channel should terminate loop quickly");
+    }
+
+    #[test]
+    fn test_start_blocking_all_channels() {
+        let mut cron = Cron::new(Utc);
+
+        let timer_count = Arc::new(AtomicUsize::new(0));
+        let add_count = Arc::new(AtomicUsize::new(0));
+
+        // Add initial job to exercise timer branch
+        let timer_clone = timer_count.clone();
+        let _job_id1 = cron.add_fn("* * * * * * *", move || {
+            timer_clone.fetch_add(1, Ordering::SeqCst);
+        }).unwrap();
+
+        // Start blocking
+        let mut cron_clone = cron.clone();
+        let handle = thread::spawn(move || {
+            cron_clone.start_blocking();
+        });
+
+        // Wait for initial job to execute (timer branch)
+        thread::sleep(Duration::from_millis(1200));
+
+        // Add job while running (add branch)
+        let add_clone = add_count.clone();
+        let _job_id2 = cron.add_fn("* * * * * * *", move || {
+            add_clone.fetch_add(1, Ordering::SeqCst);
+        }).unwrap();
+
+        // Wait for new job to execute
+        thread::sleep(Duration::from_millis(1200));
+
+        // Stop (stop branch)
+        cron.stop();
+        let _ = handle.join();
+
+        // Verify all branches were exercised
+        assert!(timer_count.load(Ordering::SeqCst) >= 1, "Timer branch should execute");
+        assert!(add_count.load(Ordering::SeqCst) >= 1, "Add branch should work");
+    }
+
+    #[test]
+    fn test_empty_entries_timer() {
+        let cron = Cron::new(Utc);
+
+        // Start with no jobs to test empty entries case
+        let mut cron_clone = cron.clone();
+        let handle = thread::spawn(move || {
+            cron_clone.start_blocking();
+        });
+
+        // Let it run briefly with no jobs
+        thread::sleep(Duration::from_millis(100));
+
+        // Stop
+        cron.stop();
+        let _ = handle.join();
+    }
+
+    #[test]
+    fn test_debug_output_coverage() {
+        use chrono::Utc;
+        use cron_tab::Cron;
+
+        let mut cron = Cron::new(Utc);
+
+        // Clone to ensure Debug trait is exercised
+        let cron_clone = cron.clone();
+        let debug_str = format!("{:?}", cron_clone);
+
+        // Should contain "Cron" in debug output
+        assert!(debug_str.contains("Cron"), "Debug output should contain 'Cron'");
+
+        // Add a job to ensure Entry debug is also covered, including schedule field
+        let _job_id = cron.add_fn("* * * * * * *", || {}).unwrap();
+
+        // Format the cron with job to ensure Entry's Debug trait including schedule field is covered
+        let debug_with_job = format!("{:?}", cron);
+        assert!(debug_with_job.len() > 0, "Debug output with job should not be empty");
+    }
+
+    #[test]
+    fn test_start_blocking_timer_expiry_with_job_execution() {
+        let mut cron = Cron::new(Utc);
+        let executed = Arc::new(AtomicUsize::new(0));
+        let executed_clone = executed.clone();
+
+        // Add job that executes every second
+        let _job_id = cron.add_fn("* * * * * * *", move || {
+            executed_clone.fetch_add(1, Ordering::SeqCst);
+        }).unwrap();
+
+        // Run start_blocking in thread
+        let mut cron_clone = cron.clone();
+        let handle = thread::spawn(move || {
+            cron_clone.start_blocking();
+        });
+
+        // Wait for jobs to execute multiple times (timer expiry branch)
+        thread::sleep(Duration::from_millis(2500));
+
+        // Stop
+        cron.stop();
+        let _ = handle.join();
+
+        // Verify timer branch executed jobs
+        let count = executed.load(Ordering::SeqCst);
+        assert!(count >= 2, "Timer expiry branch should execute jobs multiple times, got {}", count);
+    }
+
+    #[test]
+    fn test_start_blocking_add_job_while_running() {
+        let mut cron = Cron::new(Utc);
+        let executed = Arc::new(AtomicUsize::new(0));
+        let executed_clone = executed.clone();
+
+        // Start blocking first with no jobs
+        let mut cron_clone = cron.clone();
+        let handle = thread::spawn(move || {
+            cron_clone.start_blocking();
+        });
+
+        // Wait for start_blocking to initialize
+        thread::sleep(Duration::from_millis(300));
+
+        // Add job while running (tests add_channel branch)
+        let _job_id = cron.add_fn("* * * * * * *", move || {
+            executed_clone.fetch_add(1, Ordering::SeqCst);
+        }).unwrap();
+
+        // Wait for job to execute via timer
+        thread::sleep(Duration::from_millis(2500));
+
+        // Stop
+        cron.stop();
+        let _ = handle.join();
+
+        // Verify add channel worked and job executed
+        let count = executed.load(Ordering::SeqCst);
+        assert!(count >= 1, "Job added via channel should execute, got {} executions", count);
+    }
+
+    #[test]
+    fn test_set_timezone_direct_call() {
+        // Create with FixedOffset so we can change it
+        let initial_tz = FixedOffset::east_opt(0).unwrap();
+        let mut cron = Cron::new(initial_tz);
+
+        // Directly call set_timezone to cover lines 218-219
+        cron.set_timezone(FixedOffset::east_opt(9 * 3600).unwrap());
+
+        // Verify it works
+        let counter = Arc::new(AtomicUsize::new(0));
+        let counter_clone = counter.clone();
+        let _job_id = cron.add_fn("* * * * * * *", move || {
+            counter_clone.fetch_add(1, Ordering::SeqCst);
+        }).unwrap();
+
+        cron.start();
+        thread::sleep(Duration::from_millis(1100));
+        cron.stop();
+
+        assert!(counter.load(Ordering::SeqCst) >= 1);
+    }
+
+    #[test]
+    fn test_all_select_channels_in_start_blocking() {
+        let mut cron = Cron::new(Utc);
+
+        let timer_executed = Arc::new(AtomicUsize::new(0));
+        let timer_clone = timer_executed.clone();
+
+        let add_executed = Arc::new(AtomicUsize::new(0));
+        let add_clone = add_executed.clone();
+
+        // Add initial job for timer branch
+        let _job_id1 = cron.add_fn("* * * * * * *", move || {
+            timer_clone.fetch_add(1, Ordering::SeqCst);
+        }).unwrap();
+
+        // Start blocking
+        let mut cron_clone = cron.clone();
+        let handle = thread::spawn(move || {
+            cron_clone.start_blocking();
+        });
+
+        // Wait for timer branch to execute
+        thread::sleep(Duration::from_millis(1200));
+
+        // Add job while running (add_channel branch)
+        let _job_id2 = cron.add_fn("* * * * * * *", move || {
+            add_clone.fetch_add(1, Ordering::SeqCst);
+        }).unwrap();
+
+        // Wait for new job to execute
+        thread::sleep(Duration::from_millis(1500));
+
+        // Stop (stop_channel branch)
+        cron.stop();
+        let _ = handle.join();
+
+        // Verify all branches executed
+        assert!(timer_executed.load(Ordering::SeqCst) >= 1, "Timer branch should execute");
+        assert!(add_executed.load(Ordering::SeqCst) >= 1, "Add channel branch should work");
     }
 }

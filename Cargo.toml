@@ -33,5 +33,15 @@ name = "async_simple"
 path = "examples/async_simple.rs"
 required-features = ["async"]
 
+[[example]]
+name = "one_time_execution"
+path = "examples/one_time_execution.rs"
+required-features = ["sync"]
+
+[[example]]
+name = "async_one_time_execution"
+path = "examples/async_one_time_execution.rs"
+required-features = ["async"]
+
 [package.metadata.docs.rs]
 features = ["async", "sync"]

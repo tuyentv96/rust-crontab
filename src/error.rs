@@ -16,11 +16,12 @@
 /// use chrono::Utc;
 ///
 /// let mut cron = Cron::new(Utc);
-/// 
+///
 /// // This will result in a ParseError due to invalid cron expression
 /// match cron.add_fn("invalid expression", || println!("Hello")) {
 ///     Ok(job_id) => println!("Job added with ID: {}", job_id),
 ///     Err(CronError::ParseError(e)) => println!("Invalid cron expression: {}", e),
+///     Err(CronError::DurationOutOfRange) => println!("Duration too large"),
 ///     Err(CronError::Unknown) => println!("An unknown error occurred"),
 /// }
 /// ```

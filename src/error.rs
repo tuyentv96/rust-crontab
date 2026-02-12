@@ -16,11 +16,12 @@
 /// use chrono::Utc;
 ///
 /// let mut cron = Cron::new(Utc);
-/// 
+///
 /// // This will result in a ParseError due to invalid cron expression
 /// match cron.add_fn("invalid expression", || println!("Hello")) {
 ///     Ok(job_id) => println!("Job added with ID: {}", job_id),
 ///     Err(CronError::ParseError(e)) => println!("Invalid cron expression: {}", e),
+///     Err(CronError::DurationOutOfRange) => println!("Duration too large"),
 ///     Err(CronError::Unknown) => println!("An unknown error occurred"),
 /// }
 /// ```
@@ -69,6 +70,36 @@ pub enum CronError {
     #[error("Invalid cron expression: {0}")]
     ParseError(#[from] cron::error::Error),
     
+    /// Error that occurs when a duration is out of range.
+    ///
+    /// This error occurs when using [`add_fn_after`](crate::Cron::add_fn_after)
+    /// or [`add_fn_after`](crate::AsyncCron::add_fn_after) with a duration that
+    /// exceeds the maximum supported value.
+    ///
+    /// # Maximum Duration
+    ///
+    /// The maximum supported duration is approximately 292 years (i64::MAX milliseconds).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use cron_tab::{Cron, CronError};
+    /// use chrono::Utc;
+    /// use std::time::Duration;
+    ///
+    /// let mut cron = Cron::new(Utc);
+    ///
+    /// // This may result in DurationOutOfRange for extremely large durations
+    /// let very_long_time = Duration::from_secs(u64::MAX);
+    /// match cron.add_fn_after(very_long_time, || {}) {
+    ///     Ok(job_id) => println!("Job scheduled"),
+    ///     Err(CronError::DurationOutOfRange) => println!("Duration too large"),
+    ///     _ => {},
+    /// }
+    /// ```
+    #[error("Duration out of range (maximum ~292 years)")]
+    DurationOutOfRange,
+
     /// A catch-all error for unexpected conditions.
     ///
     /// This error type is reserved for future use and should rarely occur
@@ -113,6 +144,7 @@ mod tests {
         let error: CronError = cron_error.into();
         match error {
             CronError::ParseError(_) => {},
+            CronError::DurationOutOfRange => {},
             CronError::Unknown => {},
         }
     }

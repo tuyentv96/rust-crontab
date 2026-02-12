@@ -21,9 +21,254 @@ use futures::future::join_all;
 mod tests {
     use super::*;
 
-    // ===============================
+    // ONE-TIME EXECUTION TESTS
+
+    #[tokio::test]
+    async fn test_add_fn_once() {
+        let mut cron = AsyncCron::new(Utc);
+
+        let counter = Arc::new(Mutex::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        // Schedule a one-time job 2 seconds in the future
+        let target_time = Utc::now() + chrono::Duration::seconds(2);
+        cron.add_fn_once(target_time, move || {
+            let counter = Arc::clone(&counter_clone);
+            async move {
+                let mut value = counter.lock().await;
+                *value += 1;
+            }
+        })
+        .await
+        .unwrap();
+
+        cron.start().await;
+
+        // Wait before the job should execute
+        sleep(Duration::from_millis(1500)).await;
+        assert_eq!(*counter.lock().await, 0, "Job should not have executed yet");
+
+        // Wait for the job to execute
+        sleep(Duration::from_millis(1000)).await;
+        assert_eq!(*counter.lock().await, 1, "Job should have executed once");
+
+        // Wait longer to ensure it doesn't execute again
+        sleep(Duration::from_millis(2000)).await;
+        assert_eq!(*counter.lock().await, 1, "Job should only execute once");
+
+        cron.stop().await;
+    }
+
+    #[tokio::test]
+    async fn test_add_fn_after() {
+        let mut cron = AsyncCron::new(Utc);
+
+        let counter = Arc::new(Mutex::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        // Schedule a job to run after 2 seconds
+        cron.add_fn_after(Duration::from_secs(2), move || {
+            let counter = Arc::clone(&counter_clone);
+            async move {
+                let mut value = counter.lock().await;
+                *value += 1;
+            }
+        })
+        .await
+        .unwrap();
+
+        cron.start().await;
+
+        // Wait before the job should execute
+        sleep(Duration::from_millis(1500)).await;
+        assert_eq!(*counter.lock().await, 0, "Job should not have executed yet");
+
+        // Wait for the job to execute (add extra time for async overhead)
+        sleep(Duration::from_millis(1500)).await;
+        assert_eq!(*counter.lock().await, 1, "Job should have executed once");
+
+        // Wait longer to ensure it doesn't execute again
+        sleep(Duration::from_millis(1500)).await;
+        assert_eq!(*counter.lock().await, 1, "Job should only execute once");
+
+        cron.stop().await;
+    }
+
+    #[tokio::test]
+    async fn test_multiple_one_time_jobs() {
+        let mut cron = AsyncCron::new(Utc);
+
+        let counter = Arc::new(Mutex::new(0));
+        let counter1 = Arc::clone(&counter);
+        let counter2 = Arc::clone(&counter);
+        let counter3 = Arc::clone(&counter);
+
+        // Schedule multiple one-time jobs at different times
+        cron.add_fn_after(Duration::from_secs(1), move || {
+            let counter = Arc::clone(&counter1);
+            async move {
+                let mut value = counter.lock().await;
+                *value += 1;
+            }
+        })
+        .await
+        .unwrap();
+
+        cron.add_fn_after(Duration::from_secs(2), move || {
+            let counter = Arc::clone(&counter2);
+            async move {
+                let mut value = counter.lock().await;
+                *value += 10;
+            }
+        })
+        .await
+        .unwrap();
+
+        cron.add_fn_after(Duration::from_secs(4), move || {
+            let counter = Arc::clone(&counter3);
+            async move {
+                let mut value = counter.lock().await;
+                *value += 100;
+            }
+        })
+        .await
+        .unwrap();
+
+        cron.start().await;
+
+        sleep(Duration::from_millis(1500)).await;
+        assert_eq!(*counter.lock().await, 1, "First job should have executed");
+
+        sleep(Duration::from_millis(1500)).await;
+        assert_eq!(*counter.lock().await, 11, "Second job should have executed");
+
+        sleep(Duration::from_millis(2500)).await;
+        assert_eq!(*counter.lock().await, 111, "Third job should have executed");
+
+        // Wait to ensure no more executions
+        sleep(Duration::from_millis(1000)).await;
+        assert_eq!(*counter.lock().await, 111, "No more jobs should execute");
+
+        cron.stop().await;
+    }
+
+    #[tokio::test]
+    async fn test_remove_one_time_job_before_execution() {
+        let mut cron = AsyncCron::new(Utc);
+
+        let counter = Arc::new(Mutex::new(0));
+        let counter_clone = Arc::clone(&counter);
+
+        // Schedule a one-time job
+        let job_id = cron
+            .add_fn_after(Duration::from_secs(2), move || {
+                let counter = Arc::clone(&counter_clone);
+                async move {
+                    let mut value = counter.lock().await;
+                    *value += 1;
+                }
+            })
+            .await
+            .unwrap();
+
+        cron.start().await;
+
+        // Remove the job before it executes
+        sleep(Duration::from_millis(500)).await;
+        cron.remove(job_id).await;
+
+        // Wait past when the job would have executed
+        sleep(Duration::from_millis(2000)).await;
+        assert_eq!(*counter.lock().await, 0, "Removed job should not execute");
+
+        cron.stop().await;
+    }
+
+    #[tokio::test]
+    async fn test_mix_recurring_and_one_time_jobs() {
+        let mut cron = AsyncCron::new(Utc);
+
+        let recurring_counter = Arc::new(Mutex::new(0));
+        let recurring_counter_clone = Arc::clone(&recurring_counter);
+
+        let once_counter = Arc::new(Mutex::new(0));
+        let once_counter_clone = Arc::clone(&once_counter);
+
+        // Add a recurring job that runs every second
+        cron.add_fn("* * * * * * *", move || {
+            let counter = Arc::clone(&recurring_counter_clone);
+            async move {
+                let mut value = counter.lock().await;
+                *value += 1;
+            }
+        })
+        .await
+        .unwrap();
+
+        // Add a one-time job that runs after 2 seconds
+        cron.add_fn_after(Duration::from_secs(2), move || {
+            let counter = Arc::clone(&once_counter_clone);
+            async move {
+                let mut value = counter.lock().await;
+                *value += 1;
+            }
+        })
+        .await
+        .unwrap();
+
+        cron.start().await;
+
+        sleep(Duration::from_millis(3500)).await;
+
+        let recurring_count = *recurring_counter.lock().await;
+        let once_count = *once_counter.lock().await;
+
+        // Recurring job should have executed multiple times
+        assert!(
+            recurring_count >= 2,
+            "Recurring job should execute multiple times, got {}",
+            recurring_count
+        );
+
+        // One-time job should have executed exactly once
+        assert_eq!(once_count, 1, "One-time job should execute exactly once");
+
+        cron.stop().await;
+    }
+
+    #[tokio::test]
+    async fn test_duration_out_of_range_error() {
+        let mut cron = AsyncCron::new(Utc);
+
+        // Test with an extremely large duration that exceeds chrono's limit
+        let very_long_time = Duration::from_secs(u64::MAX);
+        let result = cron
+            .add_fn_after(very_long_time, || async {
+                println!("This should not execute");
+            })
+            .await;
+
+        assert!(result.is_err(), "Should fail with DurationOutOfRange");
+        match result {
+            Err(cron_tab::CronError::DurationOutOfRange) => {
+                // Success - correct error type
+            }
+            Err(e) => panic!("Expected DurationOutOfRange, got {:?}", e),
+            Ok(_) => panic!("Should have returned an error"),
+        }
+
+        // Test with a reasonable duration (should succeed)
+        let normal_duration = Duration::from_secs(10);
+        let result = cron
+            .add_fn_after(normal_duration, || async {
+                println!("This will execute");
+            })
+            .await;
+
+        assert!(result.is_ok(), "Should succeed with normal duration");
+    }
+
     // BASIC ASYNC FUNCTIONALITY TESTS
-    // ===============================
 
     #[tokio::test]
     async fn start_and_stop_cron() {
@@ -186,9 +431,7 @@ mod tests {
         assert_eq!(count_after_removal, 0);
     }
 
-    // ===============================
     // COMPREHENSIVE ASYNC TESTS
-    // ===============================
 
     #[tokio::test]
     async fn test_multiple_concurrent_jobs() {
@@ -619,9 +862,7 @@ mod tests {
         }
     }
 
-    // ===============================
     // ASYNC PERFORMANCE TESTS
-    // ===============================
 
     #[tokio::test]
     async fn test_async_concurrent_operations() {
@@ -727,9 +968,7 @@ mod tests {
         cron.remove(job_id).await;
     }
 
-    // ===============================
     // ASYNC THREAD SAFETY & MEMORY SAFETY TESTS
-    // ===============================
 
     #[tokio::test]
     async fn test_async_concurrent_job_access() {
@@ -1419,9 +1658,7 @@ mod tests {
         tokyo_mut.stop().await;
     }
 
-    // ===============================
     // COVERAGE IMPROVEMENT TESTS
-    // ===============================
 
     #[tokio::test]
     async fn test_remove_from_stopped_scheduler() {
@@ -1690,23 +1927,24 @@ mod tests {
     #[tokio::test]
     async fn test_force_uncovered_paths() {
         let mut cron = AsyncCron::new(Utc);
-        
+
         // Test case 1: Add and remove job without starting scheduler
         let job_id1 = cron.add_fn("* * * * * * *", || async {}).await.unwrap();
         cron.remove(job_id1).await;
-        
+
         // Test case 2: Test with potential edge case schedule
         if let Ok(job_id2) = cron.add_fn("0 0 30 2 * * *", || async {}).await {
             cron.remove(job_id2).await;
         }
-        
+
         // Test case 3: Start scheduler, add job, then stop
         cron.start().await;
         tokio::time::sleep(Duration::from_millis(50)).await;
-        
+
         let job_id3 = cron.add_fn("* * * * * * *", || async {}).await.unwrap();
-        
+
         cron.stop().await;
         cron.remove(job_id3).await;
     }
+
 }

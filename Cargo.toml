@@ -29,8 +29,23 @@ tokio = { version = "1", optional = true, features = ["sync", "rt-multi-thread",
 futures = { version = "0.3", optional = true }
 
 [[example]]
+name = "simple"
+path = "examples/simple.rs"
+required-features = ["sync"]
+
+[[example]]
 name = "async_simple"
 path = "examples/async_simple.rs"
+required-features = ["async"]
+
+[[example]]
+name = "one_time_execution"
+path = "examples/one_time_execution.rs"
+required-features = ["sync"]
+
+[[example]]
+name = "async_one_time_execution"
+path = "examples/async_one_time_execution.rs"
 required-features = ["async"]
 
 [package.metadata.docs.rs]

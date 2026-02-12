@@ -107,7 +107,7 @@ where
 /// * `Z` - A timezone type that implements `TimeZone + Send + Sync + 'static`
 ///
 /// # Note
-/// 
+///
 /// This type is primarily used internally by the AsyncCron scheduler and is not
 /// typically constructed directly by user code.
 #[derive(Clone)]
@@ -121,19 +121,20 @@ where
     /// This ID is used to remove or manage the job after it has been added
     /// to the async scheduler.
     pub id: usize,
-    
+
     /// The cron schedule that determines when this async job should run.
     ///
     /// This uses the `cron::Schedule` type from the cron crate to parse
     /// and calculate execution times.
-    pub schedule: cron::Schedule,
-    
+    /// `None` for one-time jobs.
+    pub schedule: Option<cron::Schedule>,
+
     /// The next scheduled execution time for this async job.
     ///
     /// This is calculated based on the cron schedule and current time.
     /// `None` indicates the job hasn't been scheduled yet.
     pub next: Option<DateTime<Z>>,
-    
+
     /// The async task to execute when the job runs.
     ///
     /// This is an `Arc<dyn TaskFuturePinned>` to allow the task to be safely
@@ -172,32 +173,14 @@ where
     /// # Returns
     ///
     /// Returns `Some(DateTime<Z>)` with the next execution time, or `None`
-    /// if no future execution time can be determined.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use chrono::Utc;
-    /// use cron_tab::AsyncCron;
-    /// use std::str::FromStr;
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// // Create an async cron scheduler to demonstrate scheduling
-    /// let mut cron = AsyncCron::new(Utc);
-    /// 
-    /// // Add an async job that runs every hour
-    /// let job_id = cron.add_fn("0 0 * * * * *", || async {
-    ///     println!("Hourly async job executed!");
-    /// }).await?;
-    /// 
-    /// // The scheduler internally calculates next execution times
-    /// // This is typically handled automatically by the AsyncCron scheduler
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// if no future execution time can be determined (e.g. one-time jobs with no schedule).
     pub fn get_next(&self, tz: Z) -> Option<DateTime<Z>> {
-        self.schedule.upcoming(tz).next()
+        self.schedule.as_ref().and_then(|s| s.upcoming(tz).next())
+    }
+
+    /// Returns `true` if this is a one-time job (no cron schedule).
+    pub fn is_once(&self) -> bool {
+        self.schedule.is_none()
     }
 }
 
@@ -212,10 +195,10 @@ mod tests {
         let entry: AsyncEntry<Utc> = AsyncEntry {
             id: 1,
             next: None,
-            schedule: "* * * * * *".parse().unwrap(),
+            schedule: Some("* * * * * *".parse().unwrap()),
             run: Arc::new(TaskWrapper::new(|| async { })),
         };
-        
+
         let debug_str = format!("{:?}", entry);
         assert!(debug_str.contains("AsyncEntry"));
         assert!(debug_str.contains("id: 1"));
@@ -226,14 +209,28 @@ mod tests {
         let entry: AsyncEntry<Utc> = AsyncEntry {
             id: 1,
             next: None,
-            schedule: "* * * * * *".parse().unwrap(),
+            schedule: Some("* * * * * *".parse().unwrap()),
             run: Arc::new(TaskWrapper::new(|| async { })),
         };
-        
+
         let now = Utc::now();
         let next = entry.get_next(Utc);
         assert!(next.is_some());
         assert!(next.unwrap() > now);
+    }
+
+    #[tokio::test]
+    async fn test_async_entry_once() {
+        let entry: AsyncEntry<Utc> = AsyncEntry {
+            id: 1,
+            next: Some(Utc::now()),
+            schedule: None,
+            run: Arc::new(TaskWrapper::new(|| async { })),
+        };
+
+        // One-time jobs should not reschedule
+        let next = entry.get_next(Utc);
+        assert!(next.is_none());
     }
 
     #[tokio::test]

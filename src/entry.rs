@@ -18,7 +18,7 @@ use chrono::{DateTime, TimeZone};
 /// * `Z` - A timezone type that implements `TimeZone + Sync + Send + 'static`
 ///
 /// # Note
-/// 
+///
 /// This type is primarily used internally by the Cron scheduler and is not
 /// typically constructed directly by user code.
 #[derive(Clone)]
@@ -31,24 +31,25 @@ where
     /// This ID is used to remove or manage the job after it has been added
     /// to the scheduler.
     pub id: usize,
-    
+
     /// The next scheduled execution time for this job.
     ///
     /// This is calculated based on the cron schedule and current time.
     /// `None` indicates the job hasn't been scheduled yet.
     pub next: Option<DateTime<Z>>,
-    
+
     /// The function to execute when the job runs.
     ///
     /// This is an `Arc<dyn Fn()>` to allow the function to be safely shared
     /// between threads and cloned when spawning execution threads.
     pub run: Arc<dyn Fn() + Send + Sync + 'static>,
-    
+
     /// The cron schedule that determines when this job should run.
     ///
     /// This uses the `cron::Schedule` type from the cron crate to parse
     /// and calculate execution times.
-    pub schedule: cron::Schedule,
+    /// `None` for one-time jobs that execute once and are automatically removed.
+    pub schedule: Option<cron::Schedule>,
 }
 
 impl<Z> fmt::Debug for Entry<Z>
@@ -81,28 +82,14 @@ where
     /// # Returns
     ///
     /// Returns `Some(DateTime<Z>)` with the next execution time, or `None`
-    /// if no future execution time can be determined.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use chrono::Utc;
-    /// use cron_tab::Cron;
-    /// use std::str::FromStr;
-    ///
-    /// // Create a cron scheduler to demonstrate scheduling
-    /// let mut cron = Cron::new(Utc);
-    /// 
-    /// // Add a job that runs every hour
-    /// let job_id = cron.add_fn("0 0 * * * * *", || {
-    ///     println!("Hourly job executed!");
-    /// }).unwrap();
-    /// 
-    /// // The scheduler internally calculates next execution times
-    /// // This is typically handled automatically by the Cron scheduler
-    /// ```
+    /// if no future execution time can be determined (e.g. one-time jobs with no schedule).
     pub fn schedule_next(&self, tz: Z) -> Option<DateTime<Z>> {
-        self.schedule.upcoming(tz).next()
+        self.schedule.as_ref().and_then(|s| s.upcoming(tz).next())
+    }
+
+    /// Returns `true` if this is a one-time job (no cron schedule).
+    pub fn is_once(&self) -> bool {
+        self.schedule.is_none()
     }
 }
 
@@ -118,9 +105,9 @@ mod tests {
             id: 1,
             next: None,
             run: Arc::new(|| {}),
-            schedule: "* * * * * *".parse().unwrap(),
+            schedule: Some("* * * * * *".parse().unwrap()),
         };
-        
+
         let debug_str = format!("{:?}", entry);
         assert!(debug_str.contains("Entry"));
         assert!(debug_str.contains("id: 1"));
@@ -132,9 +119,9 @@ mod tests {
             id: 1,
             next: None,
             run: Arc::new(|| {}),
-            schedule: "* * * * * *".parse().unwrap(),
+            schedule: Some("* * * * * *".parse().unwrap()),
         };
-        
+
         let now = Utc::now();
         let next = entry.schedule_next(Utc);
         assert!(next.is_some());
@@ -147,10 +134,24 @@ mod tests {
             id: 1,
             next: None,
             run: Arc::new(|| {}),
-            schedule: "* * * * * *".parse().unwrap(),
+            schedule: Some("* * * * * *".parse().unwrap()),
         };
-        
+
         let cloned = entry.clone();
         assert_eq!(cloned.id, entry.id);
+    }
+
+    #[test]
+    fn test_entry_once() {
+        let entry: Entry<Utc> = Entry {
+            id: 1,
+            next: Some(Utc::now()),
+            run: Arc::new(|| {}),
+            schedule: None,
+        };
+
+        // One-time jobs should not reschedule
+        let next = entry.schedule_next(Utc);
+        assert!(next.is_none());
     }
 }

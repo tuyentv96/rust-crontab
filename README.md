@@ -58,7 +58,7 @@ use cron_tab::AsyncCron;
 async fn main() {
     let mut cron = AsyncCron::new(Utc);
 
-    cron.add_fn("* * * * * *", || async {
+    cron.add_fn("0 * * * * * *", || async {
         println!("Running every minute!");
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
     }).await.unwrap();
@@ -253,6 +253,10 @@ cargo run --example simple --features sync
 
 # Asynchronous example
 cargo run --example async_simple --features async
+
+# One-time execution
+cargo run --example one_time_execution --features sync
+cargo run --example async_one_time_execution --features async
 ```
 
 ## Testing

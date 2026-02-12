@@ -48,11 +48,8 @@ where
     ///
     /// This uses the `cron::Schedule` type from the cron crate to parse
     /// and calculate execution times.
-    /// `None` for one-time jobs.
+    /// `None` for one-time jobs that execute once and are automatically removed.
     pub schedule: Option<cron::Schedule>,
-
-    /// Indicates whether this is a one-time job that should be removed after execution.
-    pub once: bool,
 }
 
 impl<Z> fmt::Debug for Entry<Z>
@@ -85,35 +82,14 @@ where
     /// # Returns
     ///
     /// Returns `Some(DateTime<Z>)` with the next execution time, or `None`
-    /// if no future execution time can be determined (including for one-time jobs
-    /// that have already been scheduled).
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use chrono::Utc;
-    /// use cron_tab::Cron;
-    /// use std::str::FromStr;
-    ///
-    /// // Create a cron scheduler to demonstrate scheduling
-    /// let mut cron = Cron::new(Utc);
-    ///
-    /// // Add a job that runs every hour
-    /// let job_id = cron.add_fn("0 0 * * * * *", || {
-    ///     println!("Hourly job executed!");
-    /// }).unwrap();
-    ///
-    /// // The scheduler internally calculates next execution times
-    /// // This is typically handled automatically by the Cron scheduler
-    /// ```
+    /// if no future execution time can be determined (e.g. one-time jobs with no schedule).
     pub fn schedule_next(&self, tz: Z) -> Option<DateTime<Z>> {
-        // For one-time jobs, don't reschedule
-        if self.once {
-            return None;
-        }
-
-        // For recurring jobs, use the cron schedule
         self.schedule.as_ref().and_then(|s| s.upcoming(tz).next())
+    }
+
+    /// Returns `true` if this is a one-time job (no cron schedule).
+    pub fn is_once(&self) -> bool {
+        self.schedule.is_none()
     }
 }
 
@@ -130,7 +106,6 @@ mod tests {
             next: None,
             run: Arc::new(|| {}),
             schedule: Some("* * * * * *".parse().unwrap()),
-            once: false,
         };
 
         let debug_str = format!("{:?}", entry);
@@ -145,7 +120,6 @@ mod tests {
             next: None,
             run: Arc::new(|| {}),
             schedule: Some("* * * * * *".parse().unwrap()),
-            once: false,
         };
 
         let now = Utc::now();
@@ -161,7 +135,6 @@ mod tests {
             next: None,
             run: Arc::new(|| {}),
             schedule: Some("* * * * * *".parse().unwrap()),
-            once: false,
         };
 
         let cloned = entry.clone();
@@ -175,7 +148,6 @@ mod tests {
             next: Some(Utc::now()),
             run: Arc::new(|| {}),
             schedule: None,
-            once: true,
         };
 
         // One-time jobs should not reschedule

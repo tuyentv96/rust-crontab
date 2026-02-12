@@ -202,7 +202,6 @@ where
             schedule: None,
             next: Some(datetime),
             run: Arc::new(TaskWrapper::new(f)),
-            once: true,
         };
 
         // If the cron is running, send the entry via the channel; otherwise, add it directly.
@@ -420,8 +419,6 @@ where
         loop {
             // Lock and sort entries to prioritize the closest scheduled job.
             let mut entries = self.entries.lock().await;
-            // Filter out entries without a next execution time and sort by next execution time (earliest first)
-            entries.retain(|e| e.next.is_some());
             entries.sort_by(|b, a| b.next.cmp(&a.next));
 
             // Determine the wait duration based on the next scheduled job.
@@ -457,7 +454,7 @@ where
                         });
 
                         // Mark one-time jobs for removal
-                        if entry.once {
+                        if entry.is_once() {
                             jobs_to_remove.push(entry.id);
                         } else {
                             // Schedule the next run of the job.
@@ -505,7 +502,6 @@ where
             schedule: Some(schedule),
             next: None,
             run: Arc::new(TaskWrapper::new(f)),
-            once: false,
         };
 
         // Determine the next scheduled time for the job.

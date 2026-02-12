@@ -140,9 +140,6 @@ where
     /// This is an `Arc<dyn TaskFuturePinned>` to allow the task to be safely
     /// shared between async contexts and cloned when spawning execution tasks.
     pub run: Arc<dyn TaskFuturePinned + Send + Sync>,
-
-    /// Indicates whether this is a one-time job that should be removed after execution.
-    pub once: bool,
 }
 
 impl<Z> fmt::Debug for AsyncEntry<Z>
@@ -176,39 +173,14 @@ where
     /// # Returns
     ///
     /// Returns `Some(DateTime<Z>)` with the next execution time, or `None`
-    /// if no future execution time can be determined (including for one-time jobs
-    /// that have already been scheduled).
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// use chrono::Utc;
-    /// use cron_tab::AsyncCron;
-    /// use std::str::FromStr;
-    ///
-    /// # #[tokio::main]
-    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    /// // Create an async cron scheduler to demonstrate scheduling
-    /// let mut cron = AsyncCron::new(Utc);
-    ///
-    /// // Add an async job that runs every hour
-    /// let job_id = cron.add_fn("0 0 * * * * *", || async {
-    ///     println!("Hourly async job executed!");
-    /// }).await?;
-    ///
-    /// // The scheduler internally calculates next execution times
-    /// // This is typically handled automatically by the AsyncCron scheduler
-    /// # Ok(())
-    /// # }
-    /// ```
+    /// if no future execution time can be determined (e.g. one-time jobs with no schedule).
     pub fn get_next(&self, tz: Z) -> Option<DateTime<Z>> {
-        // For one-time jobs, don't reschedule
-        if self.once {
-            return None;
-        }
-
-        // For recurring jobs, use the cron schedule
         self.schedule.as_ref().and_then(|s| s.upcoming(tz).next())
+    }
+
+    /// Returns `true` if this is a one-time job (no cron schedule).
+    pub fn is_once(&self) -> bool {
+        self.schedule.is_none()
     }
 }
 
@@ -225,7 +197,6 @@ mod tests {
             next: None,
             schedule: Some("* * * * * *".parse().unwrap()),
             run: Arc::new(TaskWrapper::new(|| async { })),
-            once: false,
         };
 
         let debug_str = format!("{:?}", entry);
@@ -240,7 +211,6 @@ mod tests {
             next: None,
             schedule: Some("* * * * * *".parse().unwrap()),
             run: Arc::new(TaskWrapper::new(|| async { })),
-            once: false,
         };
 
         let now = Utc::now();
@@ -256,7 +226,6 @@ mod tests {
             next: Some(Utc::now()),
             schedule: None,
             run: Arc::new(TaskWrapper::new(|| async { })),
-            once: true,
         };
 
         // One-time jobs should not reschedule

@@ -207,7 +207,6 @@ where
             next: Some(datetime),
             run: Arc::new(f),
             schedule: None,
-            once: true,
         };
 
         self.add_channel.0.send(entry).unwrap();
@@ -275,7 +274,6 @@ where
             next: None,
             run: Arc::new(f),
             schedule: Some(schedule),
-            once: false,
         };
 
         entry.next = entry.schedule_next(self.get_timezone());
@@ -475,8 +473,6 @@ where
 
         loop {
             let mut entries = self.entries.lock().unwrap();
-            // Filter out entries without a next execution time and sort by next execution time (earliest first)
-            entries.retain(|e| e.next.is_some());
             entries.sort_by(|b, a| b.next.cmp(&a.next));
 
             if let Some(entry) = entries.first() {
@@ -511,7 +507,7 @@ where
                         });
 
                         // Mark one-time jobs for removal
-                        if entry.once {
+                        if entry.is_once() {
                             jobs_to_remove.push(entry.id);
                         } else {
                             // Schedule the next execution for recurring jobs

@@ -116,7 +116,7 @@ jobs:
       # Sends the generated coverage report to CodeCov service for tracking
       # coverage trends and ensuring code quality standards.
       - name: Upload to CodeCov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           # Authentication token for private repository access
           # (Required for private repos, optional for public ones)

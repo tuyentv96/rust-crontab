@@ -33,7 +33,7 @@ jobs:
     steps:
       # Step 1: Checkout Repository
       # Downloads the repository code to the runner environment
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # Step 2: Dependency Caching
       # Caches Cargo dependencies and build artifacts to speed up subsequent runs.
@@ -116,7 +116,7 @@ jobs:
       # Sends the generated coverage report to CodeCov service for tracking
       # coverage trends and ensuring code quality standards.
       - name: Upload to CodeCov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           # Authentication token for private repository access
           # (Required for private repos, optional for public ones)
